@@ -38,8 +38,8 @@ app.secret_key = config.SECRET_KEY
 
 # Rate Limiting
 limiter = Limiter(
-    app,
     key_func=get_remote_address,
+    app=app,
     default_limits=["100 per hour"]
 )
 
