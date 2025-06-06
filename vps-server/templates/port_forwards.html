@@ -184,20 +184,36 @@
             <h3 class="font-medium text-gray-800 mb-2">Häufige Anwendungsfälle:</h3>
             <ul class="space-y-2 text-sm text-gray-600">
                 <li><strong>Web-Server:</strong> Port 80/443 → Server:80/443</li>
-                <li><strong>SSH-Zugang:</strong> Port 2222 → Server:22</li>
+                <li><strong>SSH-Zugang Server:</strong> Port 2222 → Server:22</li>
+                <li><strong>SSH-Zugang Gateway:</strong> Port 2223 → Gateway:22</li>
                 <li><strong>Minecraft:</strong> Port 25565 → Server:25565</li>
                 <li><strong>FTP:</strong> Port 21 → Server:21</li>
             </ul>
         </div>
         
         <div>
-            <h3 class="font-medium text-gray-800 mb-2">Wichtige Hinweise:</h3>
+            <h3 class="font-medium text-gray-800 mb-2">SSH-Zugang Empfehlungen:</h3>
             <ul class="space-y-2 text-sm text-gray-600">
-                <li>• Externe Ports müssen eindeutig sein</li>
-                <li>• Interne IPs sollten im Gateway-Netz liegen</li>
-                <li>• Firewall-Regeln werden automatisch gesetzt</li>
-                <li>• Änderungen sind sofort aktiv</li>
+                <li>🔒 <strong>VPS SSH:</strong> Port 22 (direkt am VPS)</li>
+                <li>🚪 <strong>Gateway SSH:</strong> Port 2223 → 10.8.0.2:22</li>
+                <li>🖥️ <strong>Server SSH:</strong> Port 2222 → 10.0.0.x:22</li>
+                <li>⚠️ Standard-Port 22 nur für VPS verwenden</li>
+                <li>🔑 Key-basierte Authentifizierung nutzen</li>
             </ul>
+        </div>
+    </div>
+    
+    <!-- SSH-Setup Warnung -->
+    <div class="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <div class="flex items-start">
+            <div class="text-yellow-600 mr-2">⚠️</div>
+            <div>
+                <h4 class="font-medium text-yellow-800 mb-1">SSH-Sicherheit beachten!</h4>
+                <p class="text-sm text-yellow-700">
+                    Port 22 ist standardmäßig nur für VPS-SSH reserviert. Für Gateway-PC und Server andere Ports verwenden (z.B. 2222, 2223). 
+                    SSH-Keys verwenden statt Passwörter!
+                </p>
+            </div>
         </div>
     </div>
 </div>

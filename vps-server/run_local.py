@@ -19,14 +19,25 @@ class MockWireGuardManager:
         self.server_port = 51820
         self.clients = [
             {
+                'name': 'Heimnetz-Gateway',
+                'location': 'Hamburg Büro',
                 'public_key': 'abc123...def456',
                 'status': 'connected',
                 'last_handshake': '2 minutes ago'
             },
             {
+                'name': 'Entwickler-Gateway',
+                'location': 'Berlin Home-Office',
                 'public_key': 'xyz789...uvw012',
                 'status': 'connected', 
                 'last_handshake': '5 minutes ago'
+            },
+            {
+                'name': 'Test-Gateway',
+                'location': 'München Labor',
+                'public_key': 'def456...abc123',
+                'status': 'disconnected', 
+                'last_handshake': '1 hour ago'
             }
         ]
         self.port_forwards = {
