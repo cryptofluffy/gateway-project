@@ -109,32 +109,17 @@ class ConfigManager:
             return False
     
     def get_vps_info(self) -> Dict:
-        """VPS-Informationen für Setup abrufen"""
+        """VPS-Informationen für Setup abrufen - generiert Keys falls nötig"""
         vps_info = {
             'public_key': None,
             'ip_address': None
         }
         
         try:
-            # Public Key aus WireGuard-Konfiguration lesen
-            if os.path.exists(config.WIREGUARD_PRIVATE_KEY_PATH):
-                with open(config.WIREGUARD_PRIVATE_KEY_PATH, 'r') as f:
-                    private_key = f.read().strip()
-                    
-                result = CommandExecutor.run_command(['wg', 'pubkey'], timeout=5)
-                if result.returncode == 0:
-                    # Public Key aus Private Key generieren
-                    import subprocess
-                    process = subprocess.Popen(
-                        ['wg', 'pubkey'], 
-                        stdin=subprocess.PIPE, 
-                        stdout=subprocess.PIPE, 
-                        stderr=subprocess.PIPE, 
-                        text=True
-                    )
-                    stdout, _ = process.communicate(input=private_key)
-                    if process.returncode == 0:
-                        vps_info['public_key'] = stdout.strip()
+            # Automatische Key-Generierung und Setup
+            public_key = self._ensure_wireguard_keys()
+            if public_key:
+                vps_info['public_key'] = public_key
             
             # VPS IP-Adresse ermitteln
             try:
@@ -152,6 +137,120 @@ class ConfigManager:
             logger.error(f"Error getting VPS info: {e}")
         
         return vps_info
+    
+    def _ensure_wireguard_keys(self) -> Optional[str]:
+        """WireGuard Keys generieren falls sie nicht existieren"""
+        try:
+            # Mögliche Pfade für Private Key prüfen
+            key_paths = [
+                config.WIREGUARD_PRIVATE_KEY_PATH,
+                '/etc/wireguard/server_private.key',
+                '/etc/wireguard/privatekey'
+            ]
+            
+            private_key_path = None
+            private_key = None
+            
+            # Existierenden Private Key finden
+            for path in key_paths:
+                if os.path.exists(path):
+                    private_key_path = path
+                    with open(path, 'r') as f:
+                        private_key = f.read().strip()
+                    break
+            
+            # Falls kein Private Key existiert, generieren
+            if not private_key:
+                logger.info("Generating new WireGuard private key...")
+                
+                # Verzeichnis erstellen
+                os.makedirs('/etc/wireguard', exist_ok=True)
+                
+                # Private Key generieren
+                result = CommandExecutor.run_command(['wg', 'genkey'])
+                if result.returncode == 0:
+                    private_key = result.stdout.strip()
+                    private_key_path = '/etc/wireguard/server_private.key'
+                    
+                    # Private Key speichern
+                    FileManager.write_file(private_key_path, private_key)
+                    os.chmod(private_key_path, 0o600)
+                    
+                    logger.info(f"Private key saved to {private_key_path}")
+                else:
+                    logger.error("Failed to generate WireGuard private key")
+                    return None
+            
+            # Public Key aus Private Key generieren
+            if private_key:
+                import subprocess
+                process = subprocess.Popen(
+                    ['wg', 'pubkey'], 
+                    stdin=subprocess.PIPE, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.PIPE, 
+                    text=True
+                )
+                stdout, stderr = process.communicate(input=private_key)
+                if process.returncode == 0:
+                    public_key = stdout.strip()
+                    
+                    # Public Key auch speichern
+                    public_key_path = '/etc/wireguard/server_public.key'
+                    FileManager.write_file(public_key_path, public_key)
+                    
+                    # WireGuard Konfiguration erstellen falls sie nicht existiert
+                    self._ensure_wireguard_config(private_key)
+                    
+                    logger.info(f"Public key: {public_key}")
+                    return public_key
+                else:
+                    logger.error(f"Failed to generate public key: {stderr}")
+                    return None
+            
+        except Exception as e:
+            logger.error(f"Error ensuring WireGuard keys: {e}")
+            return None
+    
+    def _ensure_wireguard_config(self, private_key: str):
+        """WireGuard Konfiguration erstellen falls sie nicht existiert"""
+        try:
+            if not os.path.exists(self.config_path):
+                logger.info("Creating WireGuard configuration...")
+                
+                config_content = f"""[Interface]
+PrivateKey = {private_key}
+Address = {self.server_ip}/24
+ListenPort = {config.SERVER_PORT}
+SaveConfig = false
+
+# IP-Forwarding und NAT
+PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
+# Gateway-Clients werden automatisch hinzugefügt
+"""
+                
+                FileManager.write_file(self.config_path, config_content)
+                logger.info(f"WireGuard config created at {self.config_path}")
+                
+                # IP-Forwarding aktivieren
+                try:
+                    CommandExecutor.run_command(['sysctl', '-w', 'net.ipv4.ip_forward=1'])
+                    
+                    # Permanent machen
+                    sysctl_conf = '/etc/sysctl.conf'
+                    if os.path.exists(sysctl_conf):
+                        with open(sysctl_conf, 'r') as f:
+                            content = f.read()
+                        if 'net.ipv4.ip_forward=1' not in content:
+                            with open(sysctl_conf, 'a') as f:
+                                f.write('\nnet.ipv4.ip_forward=1\n')
+                except Exception as e:
+                    logger.warning(f"Could not enable IP forwarding: {e}")
+                
+        except Exception as e:
+            logger.error(f"Error creating WireGuard config: {e}")
     
     def update_wireguard_config(self, clients: Dict) -> bool:
         """WireGuard-Konfiguration mit aktuellen Clients aktualisieren"""
