@@ -449,8 +449,8 @@ class ClientManager:
             logger.error(f"Error removing client: {e}")
             return False, f"Unerwarteter Fehler: {str(e)}"
     
-    def edit_client(self, public_key: str, name: str, location: str) -> Tuple[bool, str]:
-        """Client-Informationen bearbeiten"""
+    def edit_client(self, public_key: str, name: str, location: str, network_config: Dict = None) -> Tuple[bool, str]:
+        """Client-Informationen bearbeiten mit Netzwerkschnittstellen-Konfiguration"""
         try:
             if public_key not in self.clients:
                 return False, "Client nicht gefunden"
@@ -465,6 +465,14 @@ class ClientManager:
             self.clients[public_key]['name'] = InputValidator.sanitize_string(name)
             self.clients[public_key]['location'] = InputValidator.sanitize_string(location)
             self.clients[public_key]['modified'] = datetime.now().isoformat()
+            
+            # Netzwerkschnittstellen-Konfiguration aktualisieren
+            if network_config:
+                self.clients[public_key]['network_config'] = {
+                    'wan_interface': network_config.get('wan_interface', 'auto'),
+                    'lan_interface': network_config.get('lan_interface', 'auto'),
+                    'auto_detect': network_config.get('auto_detect', True)
+                }
             
             if self._save_clients():
                 if self.config_manager.update_wireguard_config(self.clients):
@@ -704,8 +712,9 @@ def api_clients():
             public_key = data.get('public_key', '').strip()
             name = data.get('name', '').strip()
             location = data.get('location', '').strip()
+            network_config = data.get('network_config', {})
             
-            success, message = client_manager.edit_client(public_key, name, location)
+            success, message = client_manager.edit_client(public_key, name, location, network_config)
             status_code = 200 if success else 400
             return jsonify({'success': success, 'message': message}), status_code
         

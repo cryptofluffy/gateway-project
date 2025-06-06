@@ -129,10 +129,22 @@ class DashboardManager {
             e.preventDefault();
             
             const formData = new FormData(e.target);
+            
+            // Netzwerkschnittstellen-Konfiguration sammeln
+            const wanInterface = formData.get('edit_wan_interface') || 'auto';
+            const lanInterface = formData.get('edit_lan_interface') || 'auto';
+            const customWan = formData.get('edit_custom_wan')?.trim();
+            const customLan = formData.get('edit_custom_lan')?.trim();
+            
             const data = {
                 public_key: publicKey,
                 name: formData.get('edit_name')?.trim(),
-                location: formData.get('edit_location')?.trim()
+                location: formData.get('edit_location')?.trim(),
+                network_config: {
+                    wan_interface: wanInterface === 'custom' ? customWan : wanInterface,
+                    lan_interface: lanInterface === 'custom' ? customLan : lanInterface,
+                    auto_detect: wanInterface === 'auto' || lanInterface === 'auto'
+                }
             };
 
             const validation = this.validateGatewayData(data);
@@ -328,6 +340,7 @@ class DashboardManager {
             const result = await response.json();
             
             if (result.success && result.interfaces) {
+                this.lastLoadedInterfaces = result.interfaces; // Cache für Edit-Modal
                 this.populateInterfaceDropdowns(result.interfaces);
             }
         } catch (error) {
@@ -585,19 +598,73 @@ class DashboardManager {
         const modal = document.createElement('div');
         modal.className = 'fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50';
         modal.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-screen overflow-y-auto">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">Client bearbeiten</h3>
-                <form class="edit-form">
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Gateway Name</label>
-                        <input type="text" name="edit_name" required maxlength="50"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <form class="edit-form space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Gateway Name</label>
+                            <input type="text" name="edit_name" required maxlength="50"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Standort/Beschreibung</label>
+                            <input type="text" name="edit_location" maxlength="100"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
                     </div>
-                    <div class="mb-6">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Standort/Beschreibung</label>
-                        <input type="text" name="edit_location" maxlength="100"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    
+                    <!-- Netzwerkschnittstellen-Konfiguration -->
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <h4 class="font-medium text-gray-700 mb-3">🌐 Netzwerkschnittstellen-Konfiguration</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">WAN-Interface (Internet)</label>
+                                <select name="edit_wan_interface" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="auto">🔄 Automatisch erkennen</option>
+                                    <option value="eth0">eth0 (Ethernet 1)</option>
+                                    <option value="eth1">eth1 (Ethernet 2)</option>
+                                    <option value="wlan0">wlan0 (WiFi)</option>
+                                    <option value="enp0s3">enp0s3 (Virtuell)</option>
+                                    <option value="custom">🔧 Benutzerdefiniert</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">LAN-Interface (Server)</label>
+                                <select name="edit_lan_interface" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="auto">🔄 Automatisch erkennen</option>
+                                    <option value="eth1">eth1 (Ethernet 2)</option>
+                                    <option value="eth0">eth0 (Ethernet 1)</option>
+                                    <option value="wlan1">wlan1 (WiFi AP)</option>
+                                    <option value="enp0s8">enp0s8 (Virtuell)</option>
+                                    <option value="custom">🔧 Benutzerdefiniert</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Custom Interface Inputs -->
+                        <div class="edit-custom-interfaces grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 hidden">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Custom WAN Interface</label>
+                                <input type="text" name="edit_custom_wan" placeholder="z.B. wlp2s0"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Custom LAN Interface</label>
+                                <input type="text" name="edit_custom_lan" placeholder="z.B. enp3s0"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
+                            <div class="text-sm text-blue-800">
+                                💡 <strong>Interface-Zuordnung:</strong> WAN für VPS-Verbindung, LAN für Server-Netzwerk<br>
+                                🔄 <strong>Automatisch:</strong> Gateway wählt beste verfügbare Interfaces
+                            </div>
+                        </div>
                     </div>
+                    
                     <div class="flex justify-end space-x-3">
                         <button type="button" class="cancel-btn px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors">
                             Abbrechen
@@ -610,11 +677,136 @@ class DashboardManager {
             </div>
         `;
 
+        // Event Listeners für Custom Interface Handling
+        const wanSelect = modal.querySelector('select[name="edit_wan_interface"]');
+        const lanSelect = modal.querySelector('select[name="edit_lan_interface"]');
+        const customDiv = modal.querySelector('.edit-custom-interfaces');
+        
+        const updateCustomInputs = () => {
+            const showCustom = wanSelect.value === 'custom' || lanSelect.value === 'custom';
+            if (showCustom) {
+                customDiv.classList.remove('hidden');
+            } else {
+                customDiv.classList.add('hidden');
+            }
+        };
+        
+        wanSelect.addEventListener('change', updateCustomInputs);
+        lanSelect.addEventListener('change', updateCustomInputs);
+
         modal.querySelector('.cancel-btn').addEventListener('click', () => {
             modal.remove();
         });
 
+        // Client-Daten laden und in Form einsetzen
+        this.loadClientDataIntoEditForm(modal, publicKey);
+
         return modal;
+    }
+
+    /**
+     * Client-Daten in Edit-Form laden
+     */
+    async loadClientDataIntoEditForm(modal, publicKey) {
+        try {
+            // Client-Daten vom Server abrufen
+            const response = await this.apiRequest('/api/clients');
+            const clients = await response.json();
+            
+            // Client mit matchendem Public Key finden
+            const client = clients.find(c => c.public_key === publicKey);
+            if (!client) {
+                this.showError('Client nicht gefunden');
+                modal.remove();
+                return;
+            }
+            
+            // Form-Felder befüllen
+            modal.querySelector('input[name="edit_name"]').value = client.name || '';
+            modal.querySelector('input[name="edit_location"]').value = client.location || '';
+            
+            // Netzwerkschnittstellen-Konfiguration laden
+            if (client.network_config) {
+                const wanSelect = modal.querySelector('select[name="edit_wan_interface"]');
+                const lanSelect = modal.querySelector('select[name="edit_lan_interface"]');
+                const customWanInput = modal.querySelector('input[name="edit_custom_wan"]');
+                const customLanInput = modal.querySelector('input[name="edit_custom_lan"]');
+                
+                const wanInterface = client.network_config.wan_interface || 'auto';
+                const lanInterface = client.network_config.lan_interface || 'auto';
+                
+                // Standard-Interfaces setzen oder custom wählen
+                const setInterfaceValue = (select, customInput, value) => {
+                    const option = Array.from(select.options).find(opt => opt.value === value);
+                    if (option) {
+                        select.value = value;
+                    } else if (value && value !== 'auto') {
+                        select.value = 'custom';
+                        customInput.value = value;
+                    } else {
+                        select.value = 'auto';
+                    }
+                };
+                
+                setInterfaceValue(wanSelect, customWanInput, wanInterface);
+                setInterfaceValue(lanSelect, customLanInput, lanInterface);
+                
+                // Custom Inputs anzeigen falls nötig
+                const showCustom = wanSelect.value === 'custom' || lanSelect.value === 'custom';
+                if (showCustom) {
+                    modal.querySelector('.edit-custom-interfaces').classList.remove('hidden');
+                }
+            }
+            
+            // Verfügbare Interfaces zu Dropdowns hinzufügen
+            this.populateEditInterfaceDropdowns(modal);
+            
+        } catch (error) {
+            console.error('Error loading client data:', error);
+            this.showError('Fehler beim Laden der Client-Daten');
+        }
+    }
+
+    /**
+     * Interface-Dropdowns im Edit-Modal befüllen
+     */
+    populateEditInterfaceDropdowns(modal) {
+        // Verwende bereits geladene Interface-Daten
+        if (this.lastLoadedInterfaces) {
+            const wanSelect = modal.querySelector('select[name="edit_wan_interface"]');
+            const lanSelect = modal.querySelector('select[name="edit_lan_interface"]');
+            
+            Object.entries(this.lastLoadedInterfaces).forEach(([category, interfaceList]) => {
+                interfaceList.forEach(interface => {
+                    this.addInterfaceOptionToSelect(wanSelect, interface, category);
+                    this.addInterfaceOptionToSelect(lanSelect, interface, category);
+                });
+            });
+        }
+    }
+
+    /**
+     * Interface-Option zu Select hinzufügen
+     */
+    addInterfaceOptionToSelect(select, interface, category) {
+        const option = document.createElement('option');
+        option.value = interface.name;
+        
+        let icon = '🔌';
+        if (category === 'ethernet') icon = '🌐';
+        if (category === 'wireless') icon = '📡';
+        if (category === 'virtual') icon = '🔗';
+        
+        let status = interface.status === 'up' ? '✅' : '⚠️';
+        let ip = interface.ip ? ` (${interface.ip})` : '';
+        
+        option.textContent = `${icon} ${interface.name}${ip} ${status}`;
+        
+        // Nur hinzufügen wenn noch nicht vorhanden
+        const exists = Array.from(select.options).some(opt => opt.value === interface.name);
+        if (!exists) {
+            select.appendChild(option);
+        }
     }
 }
 
