@@ -375,8 +375,8 @@ class ClientManager:
         
         return wg_peers
     
-    def add_client(self, name: str, location: str, public_key: str) -> Tuple[bool, str]:
-        """Neuen Client hinzufügen mit Validierung"""
+    def add_client(self, name: str, location: str, public_key: str, network_config: Dict = None) -> Tuple[bool, str]:
+        """Neuen Client hinzufügen mit Validierung und Netzwerkschnittstellen-Konfiguration"""
         try:
             # Input-Validierung
             if not InputValidator.validate_client_name(name):
@@ -394,11 +394,21 @@ class ClientManager:
                 return False, f"Maximale Anzahl Clients ({config.MAX_CLIENTS}) erreicht"
             
             # Client hinzufügen
-            self.clients[public_key] = {
+            client_data = {
                 'name': InputValidator.sanitize_string(name),
                 'location': InputValidator.sanitize_string(location),
                 'added': datetime.now().isoformat()
             }
+            
+            # Netzwerkschnittstellen-Konfiguration hinzufügen
+            if network_config:
+                client_data['network_config'] = {
+                    'wan_interface': network_config.get('wan_interface', 'auto'),
+                    'lan_interface': network_config.get('lan_interface', 'auto'),
+                    'auto_detect': network_config.get('auto_detect', True)
+                }
+            
+            self.clients[public_key] = client_data
             
             # Speichern und WireGuard-Config aktualisieren
             if self._save_clients():
@@ -680,8 +690,9 @@ def api_clients():
             name = data.get('name', '').strip()
             location = data.get('location', '').strip()
             public_key = data.get('public_key', '').strip()
+            network_config = data.get('network_config', {})
             
-            success, message = client_manager.add_client(name, location, public_key)
+            success, message = client_manager.add_client(name, location, public_key, network_config)
             status_code = 200 if success else 400
             return jsonify({'success': success, 'message': message}), status_code
         
@@ -710,6 +721,23 @@ def api_clients():
     except Exception as e:
         logger.error(f"Error in api_clients: {e}")
         return jsonify({'success': False, 'message': f'Server-Fehler: {str(e)}'}), 500
+
+@app.route('/api/network-interfaces', methods=['GET'])
+@limiter.limit("5 per minute")
+def api_network_interfaces():
+    """API: Verfügbare Netzwerkschnittstellen abrufen"""
+    try:
+        interfaces = NetworkUtils.get_available_interfaces()
+        return jsonify({
+            'success': True,
+            'interfaces': interfaces
+        })
+    except Exception as e:
+        logger.error(f"Error getting network interfaces: {e}")
+        return jsonify({
+            'success': False, 
+            'message': f'Fehler beim Abrufen der Netzwerkschnittstellen: {str(e)}'
+        }), 500
 
 @app.route('/api/port-forwards', methods=['GET', 'POST', 'DELETE'])
 @limiter.limit("15 per minute")

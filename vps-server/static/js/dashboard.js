@@ -7,6 +7,7 @@ class DashboardManager {
     constructor() {
         this.initializeEventListeners();
         this.loadingOverlay = this.createLoadingOverlay();
+        this.loadNetworkInterfaces();
     }
 
     /**
@@ -19,8 +20,43 @@ class DashboardManager {
             addGatewayForm.addEventListener('submit', (e) => this.handleAddGateway(e));
         }
 
+        // Netzwerkschnittstellen-Auswahl
+        const wanSelect = document.getElementById('wan_interface');
+        const lanSelect = document.getElementById('lan_interface');
+        
+        if (wanSelect) {
+            wanSelect.addEventListener('change', () => this.handleInterfaceChange());
+        }
+        if (lanSelect) {
+            lanSelect.addEventListener('change', () => this.handleInterfaceChange());
+        }
+
         // Auto-refresh für Status-Updates
         this.startAutoRefresh();
+    }
+
+    /**
+     * Netzwerkschnittstellen-Änderung behandeln
+     */
+    handleInterfaceChange() {
+        const wanSelect = document.getElementById('wan_interface');
+        const lanSelect = document.getElementById('lan_interface');
+        const customDiv = document.getElementById('custom-interfaces');
+        
+        if (!wanSelect || !lanSelect || !customDiv) return;
+        
+        const showCustom = wanSelect.value === 'custom' || lanSelect.value === 'custom';
+        
+        if (showCustom) {
+            customDiv.classList.remove('hidden');
+        } else {
+            customDiv.classList.add('hidden');
+        }
+        
+        // Warnung bei gleicher Interface-Auswahl
+        if (wanSelect.value === lanSelect.value && wanSelect.value !== 'auto' && wanSelect.value !== 'custom') {
+            this.showWarning('⚠️ WAN und LAN verwenden das gleiche Interface. Das könnte zu Problemen führen.');
+        }
     }
 
     /**
@@ -30,10 +66,22 @@ class DashboardManager {
         event.preventDefault();
         
         const formData = new FormData(event.target);
+        
+        // Netzwerkschnittstellen-Konfiguration sammeln
+        const wanInterface = document.getElementById('wan_interface')?.value || 'auto';
+        const lanInterface = document.getElementById('lan_interface')?.value || 'auto';
+        const customWan = document.getElementById('custom_wan')?.value?.trim();
+        const customLan = document.getElementById('custom_lan')?.value?.trim();
+        
         const data = {
             name: formData.get('gateway_name')?.trim(),
             location: formData.get('gateway_location')?.trim(),
-            public_key: formData.get('gateway_public_key')?.trim()
+            public_key: formData.get('gateway_public_key')?.trim(),
+            network_config: {
+                wan_interface: wanInterface === 'custom' ? customWan : wanInterface,
+                lan_interface: lanInterface === 'custom' ? customLan : lanInterface,
+                auto_detect: wanInterface === 'auto' || lanInterface === 'auto'
+            }
         };
 
         // Client-seitige Validierung
@@ -244,7 +292,96 @@ class DashboardManager {
             return { valid: false, message: 'Standort-Beschreibung ist zu lang (max. 100 Zeichen)' };
         }
 
+        // Netzwerkschnittstellen-Validierung
+        if (data.network_config) {
+            const { wan_interface, lan_interface } = data.network_config;
+            
+            // Custom Interface-Validierung
+            if (wan_interface === '' && document.getElementById('wan_interface')?.value === 'custom') {
+                return { valid: false, message: 'Custom WAN Interface ist erforderlich' };
+            }
+            
+            if (lan_interface === '' && document.getElementById('lan_interface')?.value === 'custom') {
+                return { valid: false, message: 'Custom LAN Interface ist erforderlich' };
+            }
+            
+            // Interface-Name-Validierung
+            const interfacePattern = /^[a-zA-Z0-9]+$/;
+            if (wan_interface && wan_interface !== 'auto' && !interfacePattern.test(wan_interface)) {
+                return { valid: false, message: 'Ungültiger WAN Interface Name (nur Buchstaben und Zahlen)' };
+            }
+            
+            if (lan_interface && lan_interface !== 'auto' && !interfacePattern.test(lan_interface)) {
+                return { valid: false, message: 'Ungültiger LAN Interface Name (nur Buchstaben und Zahlen)' };
+            }
+        }
+
         return { valid: true };
+    }
+
+    /**
+     * Netzwerkschnittstellen laden und Dropdown befüllen
+     */
+    async loadNetworkInterfaces() {
+        try {
+            const response = await this.apiRequest('/api/network-interfaces');
+            const result = await response.json();
+            
+            if (result.success && result.interfaces) {
+                this.populateInterfaceDropdowns(result.interfaces);
+            }
+        } catch (error) {
+            console.log('Network interfaces loading failed:', error.message);
+            // Silently fail - Standard-Options bleiben verfügbar
+        }
+    }
+
+    /**
+     * Interface-Dropdowns mit erkannten Schnittstellen befüllen
+     */
+    populateInterfaceDropdowns(interfaces) {
+        const wanSelect = document.getElementById('wan_interface');
+        const lanSelect = document.getElementById('lan_interface');
+        
+        if (!wanSelect || !lanSelect) return;
+        
+        // Aktuelle Auswahl speichern
+        const wanValue = wanSelect.value;
+        const lanValue = lanSelect.value;
+        
+        // Standard-Optionen beibehalten und erweitern
+        const addInterfaceOption = (select, interface, category) => {
+            const option = document.createElement('option');
+            option.value = interface.name;
+            
+            let icon = '🔌';
+            if (category === 'ethernet') icon = '🌐';
+            if (category === 'wireless') icon = '📡';
+            if (category === 'virtual') icon = '🔗';
+            
+            let status = interface.status === 'up' ? '✅' : '⚠️';
+            let ip = interface.ip ? ` (${interface.ip})` : '';
+            
+            option.textContent = `${icon} ${interface.name}${ip} ${status}`;
+            
+            // Nur hinzufügen wenn noch nicht vorhanden
+            const exists = Array.from(select.options).some(opt => opt.value === interface.name);
+            if (!exists) {
+                select.appendChild(option);
+            }
+        };
+        
+        // Interfaces zu beiden Dropdowns hinzufügen
+        Object.entries(interfaces).forEach(([category, interfaceList]) => {
+            interfaceList.forEach(interface => {
+                addInterfaceOption(wanSelect, interface, category);
+                addInterfaceOption(lanSelect, interface, category);
+            });
+        });
+        
+        // Ursprüngliche Auswahl wiederherstellen
+        wanSelect.value = wanValue;
+        lanSelect.value = lanValue;
     }
 
     /**
@@ -357,6 +494,13 @@ class DashboardManager {
     }
 
     /**
+     * Warnung anzeigen
+     */
+    showWarning(message) {
+        this.showNotification(message, 'warning');
+    }
+
+    /**
      * Fehler-Nachricht anzeigen
      */
     showError(message) {
@@ -368,7 +512,9 @@ class DashboardManager {
      */
     showNotification(message, type = 'info') {
         const notification = document.createElement('div');
-        const bgColor = type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-500' : 'bg-blue-500';
+        const bgColor = type === 'error' ? 'bg-red-500' : 
+                       type === 'success' ? 'bg-green-500' : 
+                       type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500';
         
         notification.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-transform duration-300 translate-x-full`;
         notification.innerHTML = `

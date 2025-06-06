@@ -86,6 +86,11 @@
                     <td class="px-4 py-2">
                         <div class="font-medium text-gray-900">{{ client.name or 'Unbenannt' }}</div>
                         <div class="text-sm text-gray-500">{{ client.location or 'Kein Standort' }}</div>
+                        {% if client.get('network_config') %}
+                        <div class="text-xs text-blue-600 mt-1">
+                            🌐 {{ client.network_config.get('wan_interface', 'auto') }} → {{ client.network_config.get('lan_interface', 'auto') }}
+                        </div>
+                        {% endif %}
                     </td>
                     <td class="px-4 py-2 text-sm font-mono">{{ client.public_key }}</td>
                     <td class="px-4 py-2">
@@ -178,28 +183,86 @@
     <div class="bg-blue-50 rounded-lg p-4 mb-4">
         <h3 class="font-medium text-gray-700 mb-3">Neuen Gateway-PC verbinden:</h3>
         
-        <form id="add-gateway-form" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Gateway Name</label>
-                <input type="text" id="gateway_name" placeholder="z.B. Heimnetz-Gateway" required
-                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <form id="add-gateway-form" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Gateway Name</label>
+                    <input type="text" id="gateway_name" placeholder="z.B. Heimnetz-Gateway" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Standort/Beschreibung</label>
+                    <input type="text" id="gateway_location" placeholder="z.B. Hamburg Büro"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Gateway Public Key</label>
+                    <input type="text" id="gateway_public_key" placeholder="Vom Gateway-PC kopieren" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
             </div>
             
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Standort/Beschreibung</label>
-                <input type="text" id="gateway_location" placeholder="z.B. Hamburg Büro"
-                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <!-- Netzwerkschnittstellen-Konfiguration -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h4 class="font-medium text-gray-700 mb-3">🌐 Netzwerkschnittstellen-Zuordnung</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">WAN-Interface (Internet)</label>
+                        <select id="wan_interface" name="wan_interface"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="auto">🔄 Automatisch erkennen</option>
+                            <option value="eth0">eth0 (Ethernet 1)</option>
+                            <option value="eth1">eth1 (Ethernet 2)</option>
+                            <option value="wlan0">wlan0 (WiFi)</option>
+                            <option value="enp0s3">enp0s3 (Virtuell)</option>
+                            <option value="custom">🔧 Benutzerdefiniert</option>
+                        </select>
+                        <div class="text-xs text-gray-500 mt-1">Verbindung zum VPS/Internet</div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">LAN-Interface (Server)</label>
+                        <select id="lan_interface" name="lan_interface"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="auto">🔄 Automatisch erkennen</option>
+                            <option value="eth1">eth1 (Ethernet 2)</option>
+                            <option value="eth0">eth0 (Ethernet 1)</option>
+                            <option value="wlan1">wlan1 (WiFi AP)</option>
+                            <option value="enp0s8">enp0s8 (Virtuell)</option>
+                            <option value="custom">🔧 Benutzerdefiniert</option>
+                        </select>
+                        <div class="text-xs text-gray-500 mt-1">Server-Netzwerk (10.0.0.x)</div>
+                    </div>
+                </div>
+                
+                <!-- Custom Interface Inputs -->
+                <div id="custom-interfaces" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 hidden">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Custom WAN Interface</label>
+                        <input type="text" id="custom_wan" placeholder="z.B. wlp2s0"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Custom LAN Interface</label>
+                        <input type="text" id="custom_lan" placeholder="z.B. enp3s0"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+                
+                <div class="mt-3 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
+                    <div class="text-sm text-blue-800">
+                        💡 <strong>Automatische Erkennung:</strong> Das Gateway versucht automatisch die beste Netzwerkkonfiguration zu finden.<br>
+                        📡 <strong>WAN:</strong> Verbindung mit Internet/VPS (meist eth0 oder wlan0)<br>
+                        🖥️ <strong>LAN:</strong> Server-Netzwerk für angeschlossene Geräte (meist eth1)
+                    </div>
+                </div>
             </div>
             
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Gateway Public Key</label>
-                <input type="text" id="gateway_public_key" placeholder="Vom Gateway-PC kopieren" required
-                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            
-            <div class="flex items-end">
+            <div class="flex justify-end">
                 <button type="submit" 
-                        class="w-full bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-md transition-colors">
+                        class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-6 rounded-md transition-colors">
                     Gateway hinzufügen
                 </button>
             </div>

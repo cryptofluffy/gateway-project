@@ -5,6 +5,7 @@ Gemeinsame Hilfsfunktionen und Validierung
 """
 
 import re
+import os
 import ipaddress
 import subprocess
 import logging
@@ -173,6 +174,122 @@ class NetworkUtils:
             return None
         except (ValueError, ipaddress.AddressValueError) as e:
             logger.error(f"Error in get_next_available_ip: {e}")
+            return None
+    
+    @staticmethod
+    def get_available_interfaces() -> Dict:
+        """
+        Ermittelt verfügbare Netzwerkschnittstellen des Systems
+        
+        Returns:
+            Dictionary mit Interface-Informationen
+        """
+        interfaces = {
+            'ethernet': [],
+            'wireless': [],
+            'virtual': [],
+            'other': []
+        }
+        
+        try:
+            # Linux: /sys/class/net verwenden
+            if os.path.exists('/sys/class/net'):
+                for interface in os.listdir('/sys/class/net'):
+                    if interface == 'lo':  # Loopback überspringen
+                        continue
+                    
+                    interface_info = {
+                        'name': interface,
+                        'type': NetworkUtils._get_interface_type(interface),
+                        'status': NetworkUtils._get_interface_status(interface),
+                        'ip': NetworkUtils._get_interface_ip(interface)
+                    }
+                    
+                    # Kategorisierung
+                    if interface.startswith(('eth', 'enp', 'ens')):
+                        interfaces['ethernet'].append(interface_info)
+                    elif interface.startswith(('wlan', 'wlp', 'wifi')):
+                        interfaces['wireless'].append(interface_info)
+                    elif interface.startswith(('veth', 'docker', 'br-', 'virbr')):
+                        interfaces['virtual'].append(interface_info)
+                    else:
+                        interfaces['other'].append(interface_info)
+            
+            # Fallback: ip command verwenden
+            else:
+                result = subprocess.run(['ip', 'link', 'show'], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if ': ' in line and '@' not in line:
+                            parts = line.split(': ')
+                            if len(parts) >= 2:
+                                interface_name = parts[1].split('@')[0]
+                                if interface_name != 'lo':
+                                    interface_info = {
+                                        'name': interface_name,
+                                        'type': 'unknown',
+                                        'status': 'unknown',
+                                        'ip': None
+                                    }
+                                    interfaces['other'].append(interface_info)
+        
+        except Exception as e:
+            logger.error(f"Error getting network interfaces: {e}")
+            # Fallback zu Standard-Interfaces
+            interfaces = {
+                'ethernet': [
+                    {'name': 'eth0', 'type': 'ethernet', 'status': 'unknown', 'ip': None},
+                    {'name': 'eth1', 'type': 'ethernet', 'status': 'unknown', 'ip': None}
+                ],
+                'wireless': [
+                    {'name': 'wlan0', 'type': 'wireless', 'status': 'unknown', 'ip': None}
+                ],
+                'virtual': [],
+                'other': []
+            }
+        
+        return interfaces
+    
+    @staticmethod
+    def _get_interface_type(interface: str) -> str:
+        """Ermittelt den Typ einer Netzwerkschnittstelle"""
+        try:
+            wireless_path = f'/sys/class/net/{interface}/wireless'
+            if os.path.exists(wireless_path):
+                return 'wireless'
+            
+            # Prüfe auf virtuelle Interfaces
+            if interface.startswith(('veth', 'docker', 'br-')):
+                return 'virtual'
+            
+            # Standard: Ethernet
+            return 'ethernet'
+        except:
+            return 'unknown'
+    
+    @staticmethod
+    def _get_interface_status(interface: str) -> str:
+        """Ermittelt den Status einer Netzwerkschnittstelle"""
+        try:
+            with open(f'/sys/class/net/{interface}/operstate', 'r') as f:
+                return f.read().strip()
+        except:
+            return 'unknown'
+    
+    @staticmethod
+    def _get_interface_ip(interface: str) -> Optional[str]:
+        """Ermittelt die IP-Adresse einer Netzwerkschnittstelle"""
+        try:
+            result = subprocess.run(['ip', 'addr', 'show', interface], 
+                                  capture_output=True, text=True, timeout=3)
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if 'inet ' in line and not '127.0.0.1' in line:
+                        ip_part = line.strip().split()[1]
+                        return ip_part.split('/')[0]
+            return None
+        except:
             return None
     
     @staticmethod
