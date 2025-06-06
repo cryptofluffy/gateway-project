@@ -127,6 +127,46 @@ class WireGuardManager:
                 json.dump(self.port_forwards, f, indent=2)
         except Exception as e:
             print(f"Fehler beim Speichern der Port-Weiterleitungen: {e}")
+    
+    def get_vps_info(self):
+        """VPS-Informationen für Setup abrufen"""
+        vps_info = {
+            'public_key': None,
+            'ip_address': None
+        }
+        
+        try:
+            # Public Key aus WireGuard-Konfiguration lesen
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r') as f:
+                    content = f.read()
+                    # Private Key finden und Public Key ableiten
+                    for line in content.split('\n'):
+                        if line.strip().startswith('PrivateKey'):
+                            private_key = line.split('=')[1].strip()
+                            # Public Key aus Private Key generieren
+                            result = subprocess.run(['wg', 'pubkey'], 
+                                                  input=private_key, 
+                                                  capture_output=True, 
+                                                  text=True)
+                            if result.returncode == 0:
+                                vps_info['public_key'] = result.stdout.strip()
+                            break
+            
+            # VPS IP-Adresse ermitteln
+            try:
+                import requests
+                response = requests.get('https://ifconfig.me', timeout=5)
+                if response.status_code == 200:
+                    vps_info['ip_address'] = response.text.strip()
+            except:
+                # Fallback: localhost für lokale Entwicklung
+                vps_info['ip_address'] = '127.0.0.1'
+                
+        except Exception as e:
+            print(f"Fehler beim Abrufen der VPS-Informationen: {e}")
+        
+        return vps_info
 
 # WireGuard Manager initialisieren
 wg_manager = WireGuardManager()
@@ -137,10 +177,15 @@ def dashboard():
     status = wg_manager.get_interface_status()
     clients = wg_manager.get_connected_clients()
     
+    # VPS-Informationen für Setup
+    vps_info = wg_manager.get_vps_info()
+    
     return render_template('dashboard.html', 
                          status=status, 
                          clients=clients,
-                         port_forwards=wg_manager.port_forwards)
+                         port_forwards=wg_manager.port_forwards,
+                         vps_public_key=vps_info.get('public_key'),
+                         vps_ip=vps_info.get('ip_address'))
 
 @app.route('/port-forwards')
 def port_forwards():

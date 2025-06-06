@@ -98,20 +98,62 @@ if command -v ufw >/dev/null 2>&1; then
 fi
 
 echo ""
-echo "✅ Installation abgeschlossen!"
+echo "✅ VPS Installation abgeschlossen!"
 echo ""
-echo "📋 Wichtige Informationen:"
-echo "========================="
+
+# VPS IP automatisch ermitteln
+VPS_IP=$(curl -s ifconfig.me)
+
+echo "🎯 GATEWAY-PC SETUP-BEFEHL:"
+echo "============================"
+echo ""
+echo "Führe diesen Befehl auf dem Gateway-PC aus:"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "git clone https://github.com/cryptofluffy/gateway-project.git && \\"
+echo "cd gateway-project/gateway-pc && \\"
+echo "sudo ./install.sh && \\"
+echo "sudo reboot"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "Nach dem Reboot des Gateway-PCs:"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "gateway-manager setup $VPS_IP $SERVER_PUBLIC_KEY && \\"
+echo "gateway-manager start"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "📱 VPS-Informationen:"
+echo "===================="
+echo "VPS IP: $VPS_IP"
 echo "Server Public Key: $SERVER_PUBLIC_KEY"
-echo "Server IP: 10.8.0.1"
-echo "Listen Port: 51820"
-echo "Web-Interface: http://$(curl -s ifconfig.me):8080"
+echo "Web-Interface: http://$VPS_IP:8080"
+echo "WireGuard Port: 51820/UDP"
 echo ""
-echo "📝 Nächste Schritte:"
-echo "1. Gateway-PC konfigurieren mit diesem Public Key"
-echo "2. Web-Interface unter Port 8080 aufrufen"
-echo "3. Port-Weiterleitungen nach Bedarf einrichten"
+echo "📋 Nach Gateway-Installation:"
+echo "============================"
+echo "1. Gateway Public Key im Web-Interface eingeben"
+echo "2. Port-Weiterleitungen konfigurieren"
+echo "3. Server am Gateway-PC anschließen"
 echo ""
 echo "🔍 Service-Status prüfen:"
 echo "systemctl status wg-quick@wg0"
 echo "systemctl status wireguard-gateway"
+echo ""
+echo "💾 Konfiguration gespeichert in: /etc/wireguard/setup-info.txt"
+
+# Setup-Info für später speichern
+cat > /etc/wireguard/setup-info.txt << EOF
+# WireGuard Gateway VPS Setup Info - $(date)
+# ==========================================
+
+VPS_IP=$VPS_IP
+SERVER_PUBLIC_KEY=$SERVER_PUBLIC_KEY
+WEB_INTERFACE=http://$VPS_IP:8080
+
+# Gateway-PC Installation:
+git clone https://github.com/cryptofluffy/gateway-project.git && cd gateway-project/gateway-pc && sudo ./install.sh && sudo reboot
+
+# Gateway-PC Konfiguration (nach Reboot):
+gateway-manager setup $VPS_IP $SERVER_PUBLIC_KEY && gateway-manager start
+EOF

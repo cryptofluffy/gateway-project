@@ -329,8 +329,23 @@ if __name__ == "__main__":
             print("🔧 Gateway wird konfiguriert...")
             if gateway.setup_initial_config(vps_ip, vps_public_key):
                 print("✅ Gateway-Konfiguration erstellt")
-                print(f"📋 Gateway Public Key: {gateway.gateway_public_key}")
-                print("💡 Diesen Public Key auf dem VPS in die wg0.conf eintragen!")
+                
+                # Gateway Public Key prominent ausgeben für Copy&Paste
+                print("")
+                print("🔑 GATEWAY PUBLIC KEY FÜR VPS DASHBOARD:")
+                print("=" * 50)
+                print(gateway.gateway_public_key)
+                print("=" * 50)
+                print("")
+                print("💡 Diesen Key im VPS Dashboard unter 'Gateway-Client hinzufügen' eingeben!")
+                
+                # Netzwerk-Setup durchführen
+                print("🌐 Netzwerk-Interfaces werden konfiguriert...")
+                if gateway.setup_network_interfaces():
+                    print("✅ Netzwerk-Konfiguration erfolgreich")
+                else:
+                    print("⚠️ Netzwerk-Konfiguration teilweise fehlgeschlagen (normal bei erstem Setup)")
+                
             else:
                 print("❌ Fehler bei der Konfiguration")
                 sys.exit(1)

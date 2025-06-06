@@ -192,8 +192,35 @@ systemctl start isc-dhcp-server
 echo ""
 echo "✅ Installation abgeschlossen!"
 echo ""
-echo "📋 Nächste Schritte:"
-echo "==================="
+echo "🎯 WICHTIGE KONFIGURATIONSDATEN:"
+echo "================================"
+echo ""
+
+# Gateway Public Key generieren für Copy&Paste
+GATEWAY_PRIVATE_KEY=$(wg genkey)
+GATEWAY_PUBLIC_KEY=$(echo "$GATEWAY_PRIVATE_KEY" | wg pubkey)
+
+echo "📋 FÜR VPS DASHBOARD EINGEBEN:"
+echo "└─ Gateway Public Key: $GATEWAY_PUBLIC_KEY"
+echo ""
+echo "💾 Diese Daten werden automatisch gespeichert in:"
+echo "   /etc/wireguard-gateway/keys.txt"
+echo ""
+
+# Keys speichern
+mkdir -p /etc/wireguard-gateway
+cat > /etc/wireguard-gateway/keys.txt << EOF
+# WireGuard Gateway Keys - $(date)
+GATEWAY_PRIVATE_KEY=$GATEWAY_PRIVATE_KEY
+GATEWAY_PUBLIC_KEY=$GATEWAY_PUBLIC_KEY
+
+# VPS Konfiguration (nach Setup ausfüllen):
+VPS_IP=
+VPS_PUBLIC_KEY=
+EOF
+
+echo "🔧 SETUP-BEFEHLE:"
+echo "================"
 echo ""
 echo "1. Gateway konfigurieren:"
 echo "   gateway-manager setup <VPS_IP> <VPS_PUBLIC_KEY>"
