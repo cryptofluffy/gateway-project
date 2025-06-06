@@ -299,36 +299,89 @@ AllowedIPs = {config.VPN_SUBNET.split('/')[0][:-1]}{client_ip}/32, {config.GATEW
     
     def _get_cached_result(self, key: str, max_age: int = 60) -> Optional[Dict]:
         """Hole gecachtes Ergebnis wenn noch gültig"""
-        if key in self._cache:
-            timestamp, data = self._cache[key]
-            if time.time() - timestamp < max_age:
-                return data
+        try:
+            if key in self._cache:
+                timestamp, data = self._cache[key]
+                if time.time() - timestamp < max_age:
+                    return data
+                else:
+                    # Abgelaufene Einträge automatisch entfernen
+                    del self._cache[key]
+        except (KeyError, TypeError, ValueError):
+            # Korrupte Cache-Einträge entfernen
+            self._cache.pop(key, None)
         return None
     
     def _cache_result(self, key: str, data: Dict):
-        """Cache Ergebnis mit Timestamp"""
-        self._cache[key] = (time.time(), data)
+        """Cache Ergebnis mit Timestamp und automatischer Bereinigung"""
+        current_time = time.time()
+        
+        # Cache-Größe begrenzen (max 100 Einträge)
+        if len(self._cache) >= 100:
+            # Älteste 20% entfernen
+            old_keys = sorted(self._cache.keys(), 
+                            key=lambda k: self._cache[k][0])[:20]
+            for old_key in old_keys:
+                self._cache.pop(old_key, None)
+        
+        self._cache[key] = (current_time, data)
     
-    def _invalidate_cache(self, key: str):
-        """Invalidiere Cache-Eintrag"""
-        if key in self._cache:
+    def _invalidate_cache(self, key: str = None):
+        """Invalidiere Cache-Eintrag oder gesamten Cache"""
+        if key:
+            self._cache.pop(key, None)
+        else:
+            self._cache.clear()
+    
+    def _cleanup_expired_cache(self, max_age: int = 300):
+        """Entferne abgelaufene Cache-Einträge"""
+        current_time = time.time()
+        expired_keys = [
+            key for key, (timestamp, _) in self._cache.items()
+            if current_time - timestamp > max_age
+        ]
+        for key in expired_keys:
             del self._cache[key]
 
 class ClientManager:
-    """Manager für Client-Verwaltung"""
+    """Manager für Client-Verwaltung mit Performance-Optimierung"""
     
     def __init__(self, config_manager: ConfigManager):
         self.config_manager = config_manager
         self.clients_file = config.CLIENTS_FILE
         self.clients = self._load_clients()
+        self._file_mtime = 0
+        self._client_cache = {}
+        self._peers_cache = None
+        self._peers_cache_time = 0
     
     def _load_clients(self) -> Dict:
-        """Lade gespeicherte Client-Informationen"""
-        return FileManager.safe_read_json(self.clients_file, {})
+        """Lade gespeicherte Client-Informationen mit Caching"""
+        try:
+            current_mtime = os.path.getmtime(self.clients_file) if os.path.exists(self.clients_file) else 0
+            
+            # Nur neu laden wenn Datei geändert wurde
+            if current_mtime > self._file_mtime:
+                self._file_mtime = current_mtime
+                self.clients = FileManager.safe_read_json(self.clients_file, {})
+                self._client_cache.clear()  # Cache invalidieren
+                
+            return self.clients
+        except (OSError, IOError) as e:
+            logger.warning(f"Could not check file modification time: {e}")
+            return FileManager.safe_read_json(self.clients_file, {})
     
     def _save_clients(self) -> bool:
-        """Speichere Client-Informationen"""
-        return FileManager.safe_write_json(self.clients_file, self.clients)
+        """Speichere Client-Informationen mit optimierter I/O"""
+        try:
+            success = FileManager.safe_write_json(self.clients_file, self.clients)
+            if success:
+                self._file_mtime = os.path.getmtime(self.clients_file)
+                self._client_cache.clear()  # Cache invalidieren
+            return success
+        except (OSError, IOError) as e:
+            logger.error(f"Error updating file modification time: {e}")
+            return False
     
     def get_connected_clients(self) -> List[Dict]:
         """Liste der Clients mit erweiterten Informationen"""
@@ -355,23 +408,51 @@ class ClientManager:
         
         return clients
     
-    def _get_wireguard_peers(self) -> Dict:
-        """Hole aktuelle WireGuard Peer-Informationen"""
+    def _get_wireguard_peers(self, use_cache: bool = True) -> Dict:
+        """Hole aktuelle WireGuard Peer-Informationen mit Caching"""
+        current_time = time.time()
+        
+        # Cache für 30 Sekunden verwenden
+        if use_cache and self._peers_cache and (current_time - self._peers_cache_time) < 30:
+            return self._peers_cache
+        
         wg_peers = {}
         try:
-            result = CommandExecutor.run_command(['wg', 'show', self.config_manager.interface])
+            result = CommandExecutor.run_command(['wg', 'show', self.config_manager.interface], timeout=5)
             if result.returncode == 0:
+                # Optimized parsing mit regulären Ausdrücken
+                import re
+                peer_pattern = re.compile(r'peer:\s*(\S+)')
+                handshake_pattern = re.compile(r'latest handshake:\s*(.+)')
+                
+                lines = result.stdout.split('\n')
                 current_peer = None
-                for line in result.stdout.split('\n'):
+                
+                for line in lines:
                     line = line.strip()
-                    if line.startswith('peer:'):
-                        current_peer = line.split('peer:')[1].strip()
+                    if not line:
+                        continue
+                    
+                    peer_match = peer_pattern.match(line)
+                    if peer_match:
+                        current_peer = peer_match.group(1)
                         wg_peers[current_peer] = {'status': 'connected'}
-                    elif current_peer and 'latest handshake:' in line:
-                        handshake = line.split('latest handshake:')[1].strip()
-                        wg_peers[current_peer]['last_handshake'] = handshake
+                        continue
+                    
+                    if current_peer:
+                        handshake_match = handshake_pattern.search(line)
+                        if handshake_match:
+                            wg_peers[current_peer]['last_handshake'] = handshake_match.group(1)
+                            
         except Exception as e:
             logger.error(f"Error getting WireGuard peers: {e}")
+            # Fallback zu gecachten Daten
+            if self._peers_cache:
+                return self._peers_cache
+        
+        # Cache aktualisieren
+        self._peers_cache = wg_peers
+        self._peers_cache_time = current_time
         
         return wg_peers
     

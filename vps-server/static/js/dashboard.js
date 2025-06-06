@@ -332,20 +332,33 @@ class DashboardManager {
     }
 
     /**
-     * Netzwerkschnittstellen laden und Dropdown befüllen
+     * Netzwerkschnittstellen laden und Dropdown befüllen mit Caching
      */
     async loadNetworkInterfaces() {
+        // Bereits geladen? Verwende Cache
+        if (this.lastLoadedInterfaces && this.lastInterfaceLoadTime) {
+            const cacheAge = Date.now() - this.lastInterfaceLoadTime;
+            if (cacheAge < 60000) { // 60 Sekunden Cache
+                this.populateInterfaceDropdowns(this.lastLoadedInterfaces);
+                return;
+            }
+        }
+        
         try {
             const response = await this.apiRequest('/api/network-interfaces');
             const result = await response.json();
             
             if (result.success && result.interfaces) {
-                this.lastLoadedInterfaces = result.interfaces; // Cache für Edit-Modal
+                this.lastLoadedInterfaces = result.interfaces;
+                this.lastInterfaceLoadTime = Date.now();
                 this.populateInterfaceDropdowns(result.interfaces);
             }
         } catch (error) {
             console.log('Network interfaces loading failed:', error.message);
-            // Silently fail - Standard-Options bleiben verfügbar
+            // Fallback zu gecachten Daten
+            if (this.lastLoadedInterfaces) {
+                this.populateInterfaceDropdowns(this.lastLoadedInterfaces);
+            }
         }
     }
 
@@ -398,13 +411,37 @@ class DashboardManager {
     }
 
     /**
-     * Auto-Refresh für Status-Updates
+     * Auto-Refresh für Status-Updates mit intelligentem Timing
      */
     startAutoRefresh() {
-        // Refresh alle 30 Sekunden
-        setInterval(() => {
+        // Adaptives Refresh-Intervall
+        let refreshInterval = 30000; // Start: 30 Sekunden
+        let lastActivity = Date.now();
+        
+        // Aktivitäts-Tracking
+        document.addEventListener('click', () => {
+            lastActivity = Date.now();
+            refreshInterval = 15000; // Bei Aktivität: 15 Sekunden
+        });
+        
+        const refreshFunction = () => {
+            const timeSinceActivity = Date.now() - lastActivity;
+            
+            // Längere Intervalle bei Inaktivität
+            if (timeSinceActivity > 300000) { // 5 Minuten inaktiv
+                refreshInterval = 120000; // 2 Minuten
+            } else if (timeSinceActivity > 60000) { // 1 Minute inaktiv
+                refreshInterval = 60000; // 1 Minute
+            } else {
+                refreshInterval = 30000; // Aktiv: 30 Sekunden
+            }
+            
             this.updateStatus();
-        }, 30000);
+            setTimeout(refreshFunction, refreshInterval);
+        };
+        
+        // Initialer Start
+        setTimeout(refreshFunction, refreshInterval);
     }
 
     /**

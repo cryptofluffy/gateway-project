@@ -10,6 +10,8 @@ import ipaddress
 import subprocess
 import logging
 import time
+import json
+import shutil
 from typing import Dict, List, Optional, Tuple, Union
 from functools import wraps
 
@@ -176,14 +178,28 @@ class NetworkUtils:
             logger.error(f"Error in get_next_available_ip: {e}")
             return None
     
+    # Cache für Interface-Informationen
+    _interface_cache = {}
+    _interface_cache_time = 0
+    
     @staticmethod
-    def get_available_interfaces() -> Dict:
+    def get_available_interfaces(use_cache: bool = True) -> Dict:
         """
-        Ermittelt verfügbare Netzwerkschnittstellen des Systems
+        Ermittelt verfügbare Netzwerkschnittstellen des Systems mit Caching
         
+        Args:
+            use_cache: Ob Cache verwendet werden soll (Standard: True)
+            
         Returns:
             Dictionary mit Interface-Informationen
         """
+        current_time = time.time()
+        
+        # Cache für 60 Sekunden verwenden
+        if (use_cache and NetworkUtils._interface_cache and 
+            (current_time - NetworkUtils._interface_cache_time) < 60):
+            return NetworkUtils._interface_cache
+        
         interfaces = {
             'ethernet': [],
             'wireless': [],
@@ -192,28 +208,35 @@ class NetworkUtils:
         }
         
         try:
-            # Linux: /sys/class/net verwenden
+            # Linux: /sys/class/net verwenden (effizientester Weg)
             if os.path.exists('/sys/class/net'):
-                for interface in os.listdir('/sys/class/net'):
-                    if interface == 'lo':  # Loopback überspringen
-                        continue
-                    
-                    interface_info = {
-                        'name': interface,
-                        'type': NetworkUtils._get_interface_type(interface),
-                        'status': NetworkUtils._get_interface_status(interface),
-                        'ip': NetworkUtils._get_interface_ip(interface)
-                    }
-                    
-                    # Kategorisierung
-                    if interface.startswith(('eth', 'enp', 'ens')):
-                        interfaces['ethernet'].append(interface_info)
-                    elif interface.startswith(('wlan', 'wlp', 'wifi')):
-                        interfaces['wireless'].append(interface_info)
-                    elif interface.startswith(('veth', 'docker', 'br-', 'virbr')):
-                        interfaces['virtual'].append(interface_info)
-                    else:
-                        interfaces['other'].append(interface_info)
+                # Parallele Verarbeitung für bessere Performance
+                interface_names = [name for name in os.listdir('/sys/class/net') 
+                                 if name != 'lo']
+                
+                for interface in interface_names:
+                    try:
+                        interface_info = {
+                            'name': interface,
+                            'type': NetworkUtils._get_interface_type(interface),
+                            'status': NetworkUtils._get_interface_status(interface),
+                            'ip': NetworkUtils._get_interface_ip(interface)
+                        }
+                        
+                        # Kategorisierung mit besserer Performance
+                        interface_first_chars = interface[:4].lower()
+                        if interface_first_chars.startswith(('eth', 'enp', 'ens')):
+                            interfaces['ethernet'].append(interface_info)
+                        elif interface_first_chars.startswith(('wlan', 'wlp', 'wifi')):
+                            interfaces['wireless'].append(interface_info)
+                        elif interface_first_chars.startswith(('veth', 'dock', 'br-', 'virb')):
+                            interfaces['virtual'].append(interface_info)
+                        else:
+                            interfaces['other'].append(interface_info)
+                            
+                    except (OSError, IOError, subprocess.TimeoutExpired) as e:
+                        logger.debug(f"Error processing interface {interface}: {e}")
+                        # Interface überspringen bei Fehlern
             
             # Fallback: ip command verwenden
             else:
@@ -248,6 +271,10 @@ class NetworkUtils:
                 'virtual': [],
                 'other': []
             }
+        
+        # Cache aktualisieren
+        NetworkUtils._interface_cache = interfaces
+        NetworkUtils._interface_cache_time = current_time
         
         return interfaces
     
@@ -303,12 +330,16 @@ class NetworkUtils:
             return False
 
 class FileManager:
-    """Sichere Datei-Operationen"""
+    """Sichere Datei-Operationen mit Performance-Optimierung"""
+    
+    # Cache für JSON-Daten
+    _json_cache = {}
+    _file_mtimes = {}
     
     @staticmethod
     def safe_write_json(filepath: str, data: Dict, backup: bool = True) -> bool:
         """
-        Schreibt JSON-Daten sicher in Datei mit optionalem Backup
+        Schreibt JSON-Daten sicher in Datei mit optimalem I/O
         
         Args:
             filepath: Pfad zur Datei
@@ -322,33 +353,91 @@ class FileManager:
         import shutil
         
         try:
-            # Backup erstellen
-            if backup and os.path.exists(filepath):
-                shutil.copy2(filepath, f"{filepath}.backup")
+            # Verzeichnis erstellen falls nötig
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
             
-            # Temporäre Datei schreiben
+            # JSON serialisieren mit kompakter Ausgabe für bessere Performance
+            json_str = json.dumps(data, separators=(',', ':'), ensure_ascii=False)
+            
+            # Prüfen ob sich Daten geändert haben
+            if os.path.exists(filepath):
+                try:
+                    with open(filepath, 'r') as f:
+                        existing_content = f.read()
+                    if existing_content == json_str:
+                        logger.debug(f"No changes detected for {filepath}, skipping write")
+                        return True
+                except (IOError, OSError):
+                    pass  # Fehler beim Lesen ignorieren, trotzdem schreiben
+                
+                # Backup nur bei Änderungen erstellen
+                if backup:
+                    backup_path = f"{filepath}.backup"
+                    shutil.copy2(filepath, backup_path)
+                    # Nur neueste 5 Backups behalten
+                    FileManager._cleanup_old_backups(filepath, max_backups=5)
+            
+            # Temporäre Datei schreiben (atomare Operation)
             temp_filepath = f"{filepath}.tmp"
             with open(temp_filepath, 'w') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+                f.write(json_str)
+                f.flush()  # Sicherstellen dass Daten geschrieben wurden
+                os.fsync(f.fileno())  # Force write to disk
             
             # Atomares Verschieben
             shutil.move(temp_filepath, filepath)
+            
+            # Cache invalidieren
+            FileManager._json_cache.pop(filepath, None)
+            FileManager._file_mtimes[filepath] = os.path.getmtime(filepath)
             
             logger.debug(f"Successfully wrote JSON to {filepath}")
             return True
             
         except Exception as e:
             logger.error(f"Error writing JSON to {filepath}: {e}")
+            # Cleanup temp file falls vorhanden
+            try:
+                temp_filepath = f"{filepath}.tmp"
+                if os.path.exists(temp_filepath):
+                    os.remove(temp_filepath)
+            except:
+                pass
             return False
     
     @staticmethod
-    def safe_read_json(filepath: str, default: Dict = None) -> Dict:
+    def _cleanup_old_backups(filepath: str, max_backups: int = 5):
+        """Entfernt alte Backup-Dateien"""
+        try:
+            backup_dir = os.path.dirname(filepath)
+            backup_basename = os.path.basename(filepath) + ".backup"
+            
+            backup_files = []
+            for file in os.listdir(backup_dir):
+                if file.startswith(backup_basename):
+                    backup_path = os.path.join(backup_dir, file)
+                    backup_files.append((backup_path, os.path.getmtime(backup_path)))
+            
+            # Nach Änderungszeit sortieren (neueste zuerst)
+            backup_files.sort(key=lambda x: x[1], reverse=True)
+            
+            # Alte Backups entfernen
+            for backup_path, _ in backup_files[max_backups:]:
+                os.remove(backup_path)
+                logger.debug(f"Removed old backup: {backup_path}")
+                
+        except Exception as e:
+            logger.debug(f"Error cleaning up backups: {e}")  # Debug only, nicht kritisch
+    
+    @staticmethod
+    def safe_read_json(filepath: str, default: Dict = None, use_cache: bool = True) -> Dict:
         """
-        Liest JSON-Daten sicher aus Datei
+        Liest JSON-Daten sicher aus Datei mit Caching
         
         Args:
             filepath: Pfad zur Datei
             default: Default-Wert bei Fehlern
+            use_cache: Ob Cache verwendet werden soll
             
         Returns:
             Gelesene Daten oder Default-Wert
@@ -359,19 +448,86 @@ class FileManager:
             default = {}
         
         try:
-            with open(filepath, 'r') as f:
+            # Cache-Check
+            if use_cache and filepath in FileManager._json_cache:
+                cached_mtime = FileManager._file_mtimes.get(filepath, 0)
+                current_mtime = os.path.getmtime(filepath) if os.path.exists(filepath) else 0
+                
+                if cached_mtime == current_mtime:
+                    logger.debug(f"Using cached JSON for {filepath}")
+                    return FileManager._json_cache[filepath]
+            
+            # Datei nicht vorhanden
+            if not os.path.exists(filepath):
+                logger.info(f"File not found: {filepath}, using default")
+                return default.copy() if isinstance(default, dict) else default
+            
+            # JSON laden
+            with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+            
+            # Cache aktualisieren
+            if use_cache:
+                FileManager._json_cache[filepath] = data
+                FileManager._file_mtimes[filepath] = os.path.getmtime(filepath)
+                
+                # Cache-Größe begrenzen (max 50 Dateien)
+                if len(FileManager._json_cache) > 50:
+                    # Älteste 10 Einträge entfernen
+                    old_files = sorted(FileManager._file_mtimes.items(), 
+                                     key=lambda x: x[1])[:10]
+                    for old_file, _ in old_files:
+                        FileManager._json_cache.pop(old_file, None)
+                        FileManager._file_mtimes.pop(old_file, None)
+            
             logger.debug(f"Successfully read JSON from {filepath}")
             return data
-        except FileNotFoundError:
-            logger.info(f"File not found: {filepath}, using default")
-            return default
+            
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error in {filepath}: {e}")
-            return default
+            # Versuche Backup zu laden
+            backup_path = f"{filepath}.backup"
+            if os.path.exists(backup_path):
+                try:
+                    with open(backup_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    logger.warning(f"Loaded backup file for {filepath}")
+                    return data
+                except:
+                    pass
+            return default.copy() if isinstance(default, dict) else default
+            
         except Exception as e:
             logger.error(f"Error reading JSON from {filepath}: {e}")
-            return default
+            return default.copy() if isinstance(default, dict) else default
+    
+    @staticmethod
+    def write_file(filepath: str, content: str, encoding: str = 'utf-8') -> bool:
+        """
+        Schreibt Text-Datei sicher
+        
+        Args:
+            filepath: Pfad zur Datei
+            content: Dateiinhalt
+            encoding: Dateikodierung
+            
+        Returns:
+            True bei Erfolg, False bei Fehler
+        """
+        try:
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            
+            with open(filepath, 'w', encoding=encoding) as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            
+            logger.debug(f"Successfully wrote file {filepath}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error writing file {filepath}: {e}")
+            return False
 
 # Rate Limiting Decorator
 def rate_limit(max_calls: int = 10, time_window: int = 60):
