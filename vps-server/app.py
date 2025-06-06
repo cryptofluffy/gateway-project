@@ -71,10 +71,22 @@ class ConfigManager:
             return status_data
             
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"Error getting interface status: {e}")
+            
+            # Benutzerfreundliche Fehlermeldungen
+            if "returned non-zero exit status" in error_msg and "wg show" in error_msg:
+                friendly_msg = "❌ WireGuard Interface noch nicht konfiguriert. Bitte führen Sie die WireGuard-Installation durch."
+            elif "No such file or directory" in error_msg:
+                friendly_msg = "❌ WireGuard ist nicht installiert. Bitte installieren Sie WireGuard zuerst."
+            elif "Permission denied" in error_msg:
+                friendly_msg = "❌ Keine Berechtigung für WireGuard-Befehle. Service als root ausführen."
+            else:
+                friendly_msg = f"❌ WireGuard-Fehler: {error_msg}"
+            
             return {
                 'status': 'error',
-                'output': str(e),
+                'output': friendly_msg,
                 'timestamp': datetime.now().isoformat()
             }
     
