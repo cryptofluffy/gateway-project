@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - WireGuard Gateway{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+    <!-- Tunnel Status -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-700">Tunnel Status</h3>
+                <p class="text-2xl font-bold {% if status.status == 'active' %}text-green-600{% else %}text-red-600{% endif %}">
+                    {% if status.status == 'active' %}Aktiv{% else %}Inaktiv{% endif %}
+                </p>
+            </div>
+            <div id="tunnel-status" class="inline-block w-4 h-4 {% if status.status == 'active' %}bg-green-500{% else %}bg-red-500{% endif %} rounded-full"></div>
+        </div>
+    </div>
+
+    <!-- Verbundene Clients -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-700">Verbundene Clients</h3>
+                <p id="client-count" class="text-2xl font-bold text-blue-600">{{ clients|length }}</p>
+            </div>
+            <div class="text-blue-500">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- Port-Weiterleitungen -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-700">Port-Weiterleitungen</h3>
+                <p class="text-2xl font-bold text-purple-600">{{ port_forwards|length }}</p>
+            </div>
+            <div class="text-purple-500">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path>
+                </svg>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- WireGuard Interface Details -->
+<div class="bg-white rounded-lg shadow-md p-6 mb-6">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-gray-800">WireGuard Interface Details</h2>
+        <button onclick="restartWireGuard()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors">
+            Interface neu starten
+        </button>
+    </div>
+    
+    {% if status.output %}
+    <pre class="bg-gray-100 rounded-lg p-4 text-sm overflow-x-auto">{{ status.output }}</pre>
+    {% else %}
+    <p class="text-gray-500 italic">Keine Interface-Informationen verfügbar</p>
+    {% endif %}
+</div>
+
+<!-- Verbundene Clients -->
+<div class="bg-white rounded-lg shadow-md p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-800 mb-4">Verbundene Clients</h2>
+    
+    {% if clients %}
+    <div class="overflow-x-auto">
+        <table class="w-full table-auto">
+            <thead>
+                <tr class="bg-gray-50">
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Public Key</th>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Status</th>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Letzter Handshake</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for client in clients %}
+                <tr class="border-t">
+                    <td class="px-4 py-2 text-sm font-mono">{{ client.public_key }}</td>
+                    <td class="px-4 py-2">
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                            {{ client.status }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-2 text-sm">{{ client.last_handshake }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-gray-500 italic">Keine Clients verbunden</p>
+    {% endif %}
+</div>
+
+<!-- Port-Weiterleitungen Übersicht -->
+<div class="bg-white rounded-lg shadow-md p-6">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-gray-800">Aktive Port-Weiterleitungen</h2>
+        <a href="/port-forwards" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors">
+            Verwalten
+        </a>
+    </div>
+    
+    {% if port_forwards %}
+    <div class="space-y-2">
+        {% for rule_id, rule in port_forwards.items() %}
+        <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+            <div>
+                <span class="font-medium">Port {{ rule.external_port }}/{{ rule.protocol }}</span>
+                <span class="text-gray-500 mx-2">→</span>
+                <span class="text-blue-600">{{ rule.internal_ip }}:{{ rule.internal_port }}</span>
+            </div>
+            <span class="text-xs text-gray-500">{{ rule.created[:19] }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-gray-500 italic">Keine Port-Weiterleitungen konfiguriert</p>
+    {% endif %}
+</div>
+
+<script>
+async function restartWireGuard() {
+    if (!confirm('WireGuard Interface wirklich neu starten?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/restart-wireguard', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('WireGuard erfolgreich neu gestartet');
+            location.reload();
+        } else {
+            alert('Fehler: ' + data.message);
+        }
+    } catch (error) {
+        alert('Fehler beim Neustart: ' + error.message);
+    }
+}
+</script>
+{% endblock %}
