@@ -282,5 +282,93 @@ async function restartWireGuard() {
         alert('Fehler beim Neustart: ' + error.message);
     }
 }
+
+// Gateway-Client Management Funktionen
+document.getElementById('add-gateway-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = {
+        name: formData.get('gateway_name'),
+        location: formData.get('gateway_location'),
+        public_key: formData.get('gateway_public_key')
+    };
+    
+    try {
+        const response = await fetch('/api/clients', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Gateway-Client erfolgreich hinzugefügt!');
+            location.reload();
+        } else {
+            alert('Fehler: ' + result.message);
+        }
+    } catch (error) {
+        alert('Fehler beim Hinzufügen: ' + error.message);
+    }
+});
+
+async function editClient(publicKey) {
+    const newName = prompt('Neuer Gateway Name:');
+    const newLocation = prompt('Neuer Standort/Beschreibung:');
+    
+    if (newName === null) return; // Abbruch
+    
+    try {
+        const response = await fetch('/api/clients', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                public_key: publicKey,
+                name: newName,
+                location: newLocation || ''
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Client erfolgreich bearbeitet');
+            location.reload();
+        } else {
+            alert('Fehler: ' + result.message);
+        }
+    } catch (error) {
+        alert('Fehler beim Bearbeiten: ' + error.message);
+    }
+}
+
+async function removeClient(publicKey) {
+    if (!confirm('Client wirklich entfernen? Diese Aktion kann nicht rückgängig gemacht werden.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/clients?public_key=${encodeURIComponent(publicKey)}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Client erfolgreich entfernt');
+            location.reload();
+        } else {
+            alert('Fehler: ' + result.message);
+        }
+    } catch (error) {
+        alert('Fehler beim Entfernen: ' + error.message);
+    }
+}
 </script>
 {% endblock %}

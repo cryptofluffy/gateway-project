@@ -24,6 +24,8 @@ class WireGuardManager:
         self.clients = {}
         self.port_forwards = {}
         self.load_config()
+        self.load_clients()
+        self.load_port_forwards()
     
     def load_config(self):
         """Lade WireGuard Konfiguration"""
@@ -48,25 +50,153 @@ class WireGuardManager:
         except Exception as e:
             return {'status': 'error', 'output': str(e)}
     
-    def get_connected_clients(self):
-        """Liste der verbundenen Clients"""
+    def load_clients(self):
+        """Lade gespeicherte Client-Informationen"""
         try:
-            result = subprocess.run(['wg', 'show', self.interface, 'peers'], 
+            if os.path.exists('/etc/wireguard/clients.json'):
+                with open('/etc/wireguard/clients.json', 'r') as f:
+                    self.clients = json.load(f)
+        except Exception as e:
+            print(f"Fehler beim Laden der Clients: {e}")
+            self.clients = {}
+    
+    def save_clients(self):
+        """Speichere Client-Informationen"""
+        try:
+            os.makedirs('/etc/wireguard', exist_ok=True)
+            with open('/etc/wireguard/clients.json', 'w') as f:
+                json.dump(self.clients, f, indent=2)
+        except Exception as e:
+            print(f"Fehler beim Speichern der Clients: {e}")
+    
+    def load_port_forwards(self):
+        """Lade gespeicherte Port-Weiterleitungen"""
+        try:
+            if os.path.exists('/etc/wireguard/port_forwards.json'):
+                with open('/etc/wireguard/port_forwards.json', 'r') as f:
+                    self.port_forwards = json.load(f)
+        except Exception as e:
+            print(f"Fehler beim Laden der Port-Weiterleitungen: {e}")
+            self.port_forwards = {}
+    
+    def get_connected_clients(self):
+        """Liste der verbundenen Clients mit erweiterten Informationen"""
+        # Hole aktuelle WireGuard Peer-Informationen
+        wg_peers = {}
+        try:
+            result = subprocess.run(['wg', 'show', self.interface], 
                                   capture_output=True, text=True)
             if result.returncode == 0:
-                peers = result.stdout.strip().split('\n') if result.stdout.strip() else []
-                clients = []
-                for peer in peers:
-                    if peer:
-                        clients.append({
-                            'public_key': peer[:20] + '...',
-                            'status': 'connected',
-                            'last_handshake': 'N/A'
-                        })
-                return clients
-            return []
+                current_peer = None
+                for line in result.stdout.split('\n'):
+                    line = line.strip()
+                    if line.startswith('peer:'):
+                        current_peer = line.split('peer:')[1].strip()
+                        wg_peers[current_peer] = {'status': 'connected'}
+                    elif current_peer and 'latest handshake:' in line:
+                        handshake = line.split('latest handshake:')[1].strip()
+                        wg_peers[current_peer]['last_handshake'] = handshake
         except Exception as e:
-            return []
+            print(f"Fehler beim Abrufen der WireGuard-Peers: {e}")
+        
+        # Kombiniere gespeicherte Client-Daten mit aktuellen WireGuard-Daten
+        clients = []
+        for public_key, client_info in self.clients.items():
+            client_data = {
+                'name': client_info.get('name', 'Unbenannt'),
+                'location': client_info.get('location', 'Kein Standort'),
+                'public_key': public_key,
+                'status': 'disconnected',
+                'last_handshake': 'Nie'
+            }
+            
+            # Prüfe ob Client aktuell verbunden ist
+            if public_key in wg_peers:
+                client_data['status'] = 'connected'
+                client_data['last_handshake'] = wg_peers[public_key].get('last_handshake', 'N/A')
+            
+            clients.append(client_data)
+        
+        return clients
+    
+    def add_client(self, name, location, public_key):
+        """Neuen Client hinzufügen"""
+        try:
+            # Client-Informationen speichern
+            self.clients[public_key] = {
+                'name': name,
+                'location': location,
+                'added': datetime.now().isoformat()
+            }
+            self.save_clients()
+            
+            # WireGuard-Konfiguration aktualisieren
+            self.update_wireguard_config()
+            return True
+        except Exception as e:
+            print(f"Fehler beim Hinzufügen des Clients: {e}")
+            return False
+    
+    def remove_client(self, public_key):
+        """Client entfernen"""
+        try:
+            if public_key in self.clients:
+                del self.clients[public_key]
+                self.save_clients()
+                
+                # WireGuard-Konfiguration aktualisieren
+                self.update_wireguard_config()
+                return True
+            return False
+        except Exception as e:
+            print(f"Fehler beim Entfernen des Clients: {e}")
+            return False
+    
+    def edit_client(self, public_key, name, location):
+        """Client-Informationen bearbeiten"""
+        try:
+            if public_key in self.clients:
+                self.clients[public_key]['name'] = name
+                self.clients[public_key]['location'] = location
+                self.clients[public_key]['modified'] = datetime.now().isoformat()
+                self.save_clients()
+                return True
+            return False
+        except Exception as e:
+            print(f"Fehler beim Bearbeiten des Clients: {e}")
+            return False
+    
+    def update_wireguard_config(self):
+        """WireGuard-Konfiguration mit aktuellen Clients aktualisieren"""
+        try:
+            config_content = f"""[Interface]
+PrivateKey = $(cat /etc/wireguard/private.key)
+Address = {self.server_ip}/24
+ListenPort = {self.server_port}
+PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
+"""
+            
+            # Füge jeden Client als Peer hinzu
+            client_ip = 2  # Start bei 10.8.0.2
+            for public_key, client_info in self.clients.items():
+                config_content += f"""# Client: {client_info.get('name', 'Unbenannt')} ({client_info.get('location', 'Kein Standort')})
+[Peer]
+PublicKey = {public_key}
+AllowedIPs = 10.8.0.{client_ip}/32, 10.0.0.0/24
+
+"""
+                client_ip += 1
+            
+            # Konfiguration schreiben
+            with open(self.config_path, 'w') as f:
+                f.write(config_content)
+            
+            return True
+        except Exception as e:
+            print(f"Fehler beim Aktualisieren der WireGuard-Konfiguration: {e}")
+            return False
     
     def add_port_forward(self, external_port, internal_ip, internal_port, protocol='tcp'):
         """Port-Weiterleitung hinzufügen"""
@@ -230,6 +360,51 @@ def api_port_forwards():
             return jsonify({'success': True, 'message': 'Port-Weiterleitung entfernt'})
         else:
             return jsonify({'success': False, 'message': 'Fehler beim Entfernen'}), 400
+
+@app.route('/api/clients', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def api_clients():
+    """API: Client-Management"""
+    if request.method == 'GET':
+        clients = wg_manager.get_connected_clients()
+        return jsonify(clients)
+    
+    elif request.method == 'POST':
+        data = request.get_json()
+        name = data.get('name', '')
+        location = data.get('location', '')
+        public_key = data.get('public_key', '')
+        
+        if not name or not public_key:
+            return jsonify({'success': False, 'message': 'Name und Public Key sind erforderlich'}), 400
+        
+        if wg_manager.add_client(name, location, public_key):
+            return jsonify({'success': True, 'message': 'Client erfolgreich hinzugefügt'})
+        else:
+            return jsonify({'success': False, 'message': 'Fehler beim Hinzufügen des Clients'}), 400
+    
+    elif request.method == 'PUT':
+        data = request.get_json()
+        public_key = data.get('public_key', '')
+        name = data.get('name', '')
+        location = data.get('location', '')
+        
+        if not public_key:
+            return jsonify({'success': False, 'message': 'Public Key ist erforderlich'}), 400
+        
+        if wg_manager.edit_client(public_key, name, location):
+            return jsonify({'success': True, 'message': 'Client erfolgreich bearbeitet'})
+        else:
+            return jsonify({'success': False, 'message': 'Fehler beim Bearbeiten des Clients'}), 400
+    
+    elif request.method == 'DELETE':
+        public_key = request.args.get('public_key')
+        if not public_key:
+            return jsonify({'success': False, 'message': 'Public Key ist erforderlich'}), 400
+        
+        if wg_manager.remove_client(public_key):
+            return jsonify({'success': True, 'message': 'Client erfolgreich entfernt'})
+        else:
+            return jsonify({'success': False, 'message': 'Fehler beim Entfernen des Clients'}), 400
 
 @app.route('/api/restart-wireguard', methods=['POST'])
 def api_restart_wireguard():
