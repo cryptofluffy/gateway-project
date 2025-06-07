@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WireGuard Gateway - Sichere VPN-Lösung</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .feature-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-lg fixed w-full top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 flex items-center">
+                        <span class="text-2xl font-bold text-indigo-600">🔒 WireGuard Gateway</span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <!-- Language Toggle -->
+                    <div class="flex items-center space-x-2">
+                        <button id="nav-lang-de" class="px-3 py-1 rounded bg-indigo-500 text-white text-sm" onclick="setLanguage('de')">
+                            🇩🇪 DE
+                        </button>
+                        <button id="nav-lang-en" class="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm" onclick="setLanguage('en')">
+                            🇺🇸 EN
+                        </button>
+                    </div>
+                    <a href="/dashboard" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                        <span data-i18n="nav.dashboard">Dashboard</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="gradient-bg pt-20 pb-16 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16">
+            <div class="text-center">
+                <h1 class="text-4xl md:text-6xl font-bold mb-6" data-i18n="hero.title">
+                    Sichere VPN-Gateway Lösung
+                </h1>
+                <p class="text-xl md:text-2xl mb-8 max-w-3xl mx-auto opacity-90" data-i18n="hero.subtitle">
+                    Verbinden Sie sichere Netzwerke über das Internet mit WireGuard-Technologie. Einfach einzurichten, hochsicher und performant.
+                </p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <button onclick="downloadGateway()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-8 rounded-lg text-lg transition-colors pulse-animation">
+                        📥 <span data-i18n="hero.download">Gateway herunterladen</span>
+                    </button>
+                    <a href="#features" class="bg-white text-indigo-600 hover:bg-gray-100 font-bold py-4 px-8 rounded-lg text-lg transition-colors">
+                        📖 <span data-i18n="hero.learn_more">Mehr erfahren</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4" data-i18n="features.title">
+                    Warum WireGuard Gateway?
+                </h2>
+                <p class="text-xl text-gray-600 max-w-3xl mx-auto" data-i18n="features.subtitle">
+                    Moderne VPN-Technologie trifft auf einfache Bedienung
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Feature 1 -->
+                <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                    <div class="text-4xl mb-4">🚀</div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4" data-i18n="features.fast.title">
+                        Blitzschnell
+                    </h3>
+                    <p class="text-gray-600" data-i18n="features.fast.description">
+                        WireGuard ist bis zu 4x schneller als OpenVPN und benötigt weniger Ressourcen
+                    </p>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                    <div class="text-4xl mb-4">🔒</div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4" data-i18n="features.secure.title">
+                        Hochsicher
+                    </h3>
+                    <p class="text-gray-600" data-i18n="features.secure.description">
+                        Moderne Kryptographie mit ChaCha20, Poly1305 und Curve25519
+                    </p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                    <div class="text-4xl mb-4">⚡</div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4" data-i18n="features.easy.title">
+                        Einfach
+                    </h3>
+                    <p class="text-gray-600" data-i18n="features.easy.description">
+                        Ein Befehl für komplette Installation und Konfiguration
+                    </p>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                    <div class="text-4xl mb-4">🌐</div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4" data-i18n="features.remote.title">
+                        Remote Access
+                    </h3>
+                    <p class="text-gray-600" data-i18n="features.remote.description">
+                        Sicherer Zugriff auf entfernte Netzwerke von überall
+                    </p>
+                </div>
+
+                <!-- Feature 5 -->
+                <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                    <div class="text-4xl mb-4">📊</div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4" data-i18n="features.monitoring.title">
+                        Monitoring
+                    </h3>
+                    <p class="text-gray-600" data-i18n="features.monitoring.description">
+                        Überwachen Sie Verbindungen und Port-Weiterleitungen in Echtzeit
+                    </p>
+                </div>
+
+                <!-- Feature 6 -->
+                <div class="feature-card bg-gray-50 rounded-xl p-8 text-center">
+                    <div class="text-4xl mb-4">🔧</div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4" data-i18n="features.flexible.title">
+                        Flexibel
+                    </h3>
+                    <p class="text-gray-600" data-i18n="features.flexible.description">
+                        Automatische oder manuelle Netzwerk-Interface Konfiguration
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How it Works -->
+    <section class="py-20 bg-gray-100">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4" data-i18n="howto.title">
+                    So funktioniert's
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <!-- Step 1 -->
+                <div class="text-center">
+                    <div class="bg-indigo-500 text-white rounded-full w-16 h-16 flex items-center justify-center text-2xl font-bold mx-auto mb-4">
+                        1
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4" data-i18n="howto.step1.title">
+                        VPS einrichten
+                    </h3>
+                    <p class="text-gray-600" data-i18n="howto.step1.description">
+                        Installieren Sie den VPS-Server und führen Sie das Setup aus
+                    </p>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="text-center">
+                    <div class="bg-indigo-500 text-white rounded-full w-16 h-16 flex items-center justify-center text-2xl font-bold mx-auto mb-4">
+                        2
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4" data-i18n="howto.step2.title">
+                        Gateway-PC installieren
+                    </h3>
+                    <p class="text-gray-600" data-i18n="howto.step2.description">
+                        Laden Sie das Gateway herunter und installieren Sie es auf Ihrem Netzwerk-PC
+                    </p>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="text-center">
+                    <div class="bg-green-500 text-white rounded-full w-16 h-16 flex items-center justify-center text-2xl font-bold mx-auto mb-4">
+                        3
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4" data-i18n="howto.step3.title">
+                        Fertig!
+                    </h3>
+                    <p class="text-gray-600" data-i18n="howto.step3.description">
+                        Ihr sicherer VPN-Tunnel ist etabliert und Port-Weiterleitungen funktionieren
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download Section -->
+    <section class="py-20 bg-indigo-600 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h2 class="text-3xl md:text-4xl font-bold mb-8" data-i18n="download.title">
+                Jetzt herunterladen
+            </h2>
+            <p class="text-xl mb-8 opacity-90" data-i18n="download.subtitle">
+                Starten Sie in wenigen Minuten mit Ihrer sicheren VPN-Verbindung
+            </p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                <!-- VPS Server -->
+                <div class="bg-white text-gray-900 rounded-lg p-8">
+                    <h3 class="text-2xl font-bold mb-4" data-i18n="download.vps.title">🖥️ VPS Server</h3>
+                    <p class="text-gray-600 mb-6" data-i18n="download.vps.description">
+                        Für Ihren VPS/Cloud Server (Ubuntu, Debian, CentOS)
+                    </p>
+                    <button onclick="downloadVPS()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg w-full transition-colors">
+                        📥 <span data-i18n="download.vps.button">VPS Server herunterladen</span>
+                    </button>
+                </div>
+
+                <!-- Gateway Client -->
+                <div class="bg-white text-gray-900 rounded-lg p-8">
+                    <h3 class="text-2xl font-bold mb-4" data-i18n="download.gateway.title">🏠 Gateway-PC</h3>
+                    <p class="text-gray-600 mb-6" data-i18n="download.gateway.description">
+                        Für Ihren lokalen Gateway-PC (Raspberry Pi, Linux PC)
+                    </p>
+                    <button onclick="downloadGateway()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg w-full transition-colors">
+                        📥 <span data-i18n="download.gateway.button">Gateway-PC herunterladen</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-12 p-6 bg-indigo-700 rounded-lg max-w-2xl mx-auto">
+                <h4 class="text-lg font-bold mb-3" data-i18n="download.requirements.title">📋 Systemanforderungen</h4>
+                <ul class="text-left space-y-2 text-indigo-100">
+                    <li data-i18n="download.requirements.linux">• Linux (Ubuntu 18.04+, Debian 10+, CentOS 7+)</li>
+                    <li data-i18n="download.requirements.root">• Root-Zugriff für Installation</li>
+                    <li data-i18n="download.requirements.network">• Internetverbindung</li>
+                    <li data-i18n="download.requirements.ports">• Offene Ports für WireGuard (Standard: 51820/UDP)</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div>
+                    <h3 class="text-lg font-bold mb-4">🔒 WireGuard Gateway</h3>
+                    <p class="text-gray-400" data-i18n="footer.description">
+                        Sichere VPN-Lösung für Netzwerk-Verbindungen
+                    </p>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold mb-4" data-i18n="footer.links.title">Links</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="/dashboard" class="hover:text-white transition-colors" data-i18n="footer.links.dashboard">Dashboard</a></li>
+                        <li><a href="#features" class="hover:text-white transition-colors" data-i18n="footer.links.features">Features</a></li>
+                        <li><a href="#" onclick="downloadGateway()" class="hover:text-white transition-colors" data-i18n="footer.links.download">Download</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-lg font-semibold mb-4" data-i18n="footer.tech.title">Technologie</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li>• WireGuard VPN</li>
+                        <li>• Python Flask</li>
+                        <li>• Modern Web UI</li>
+                        <li>• Linux Compatible</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
+                <p>&copy; 2024 WireGuard Gateway. <span data-i18n="footer.copyright">Alle Rechte vorbehalten.</span></p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Include i18n for language support -->
+    <script src="{{ url_for('static', filename='js/i18n-landing.js') }}"></script>
+    
+    <script>
+        // Download functions
+        function downloadGateway() {
+            // Create download link for gateway
+            const link = document.createElement('a');
+            link.href = '/download/gateway';
+            link.download = 'wireguard-gateway.tar.gz';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Show success message
+            showToast(i18n ? i18n.translate('download.success') : 'Download gestartet!', 'success');
+        }
+
+        function downloadVPS() {
+            // Create download link for VPS
+            const link = document.createElement('a');
+            link.href = '/download/vps';
+            link.download = 'wireguard-vps-server.tar.gz';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Show success message
+            showToast(i18n ? i18n.translate('download.success') : 'Download gestartet!', 'success');
+        }
+
+        // Toast notification function
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            const bgColor = type === 'success' ? 'bg-green-500' : 
+                           type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+            
+            toast.className = `fixed top-4 right-4 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-transform duration-300 translate-x-full`;
+            toast.innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <span>${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" class="text-white hover:text-gray-200 ml-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            `;
+
+            document.body.appendChild(toast);
+
+            // Animation
+            setTimeout(() => {
+                toast.classList.remove('translate-x-full');
+            }, 100);
+
+            // Auto-remove
+            setTimeout(() => {
+                toast.classList.add('translate-x-full');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

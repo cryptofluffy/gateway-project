@@ -716,6 +716,7 @@ port_forward_manager = PortForwardManager()
 
 # Flask Routes
 @app.route('/')
+@app.route('/dashboard')
 def dashboard():
     """Haupt-Dashboard"""
     try:
@@ -879,6 +880,7 @@ def api_restart_wireguard():
     except Exception as e:
         logger.error(f"Error in api_restart_wireguard: {e}")
         return jsonify({'success': False, 'message': f'Server-Fehler: {str(e)}'}), 500
+
 
 # Error Handlers
 @app.errorhandler(404)

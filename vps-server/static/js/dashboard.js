@@ -91,7 +91,7 @@ class DashboardManager {
             return;
         }
 
-        this.showLoading('Gateway wird hinzugefügt...');
+        this.showLoading(i18n ? i18n.translate('notifications.gateway_adding') : 'Gateway wird hinzugefügt...');
 
         try {
             const response = await this.apiRequest('/api/clients', {
@@ -105,7 +105,7 @@ class DashboardManager {
             const result = await response.json();
 
             if (result.success) {
-                this.showSuccess('Gateway-Client erfolgreich hinzugefügt!');
+                this.showSuccess(i18n ? i18n.translate('notifications.gateway_added') : 'Gateway-Client erfolgreich hinzugefügt!');
                 setTimeout(() => location.reload(), 1500);
             } else {
                 this.showError(result.message || 'Unbekannter Fehler');
@@ -153,7 +153,7 @@ class DashboardManager {
                 return;
             }
 
-            this.showLoading('Client wird bearbeitet...');
+            this.showLoading(i18n ? i18n.translate('notifications.client_editing') : 'Client wird bearbeitet...');
 
             try {
                 const response = await this.apiRequest('/api/clients', {
@@ -167,7 +167,7 @@ class DashboardManager {
                 const result = await response.json();
 
                 if (result.success) {
-                    this.showSuccess('Client erfolgreich bearbeitet');
+                    this.showSuccess(i18n ? i18n.translate('notifications.client_edited') : 'Client erfolgreich bearbeitet');
                     setTimeout(() => location.reload(), 1500);
                 } else {
                     this.showError(result.message || 'Unbekannter Fehler');
@@ -186,13 +186,13 @@ class DashboardManager {
      */
     async removeClient(publicKey) {
         const confirmed = await this.showConfirmDialog(
-            'Client entfernen?',
-            'Diese Aktion kann nicht rückgängig gemacht werden.'
+            i18n ? i18n.translate('notifications.confirm_remove') : 'Client entfernen?',
+            i18n ? i18n.translate('notifications.confirm_remove_message') : 'Diese Aktion kann nicht rückgängig gemacht werden.'
         );
 
         if (!confirmed) return;
 
-        this.showLoading('Client wird entfernt...');
+        this.showLoading(i18n ? i18n.translate('notifications.client_removing') : 'Client wird entfernt...');
 
         try {
             const response = await this.apiRequest(`/api/clients?public_key=${encodeURIComponent(publicKey)}`, {
@@ -202,7 +202,7 @@ class DashboardManager {
             const result = await response.json();
 
             if (result.success) {
-                this.showSuccess('Client erfolgreich entfernt');
+                this.showSuccess(i18n ? i18n.translate('notifications.client_removed') : 'Client erfolgreich entfernt');
                 setTimeout(() => location.reload(), 1500);
             } else {
                 this.showError(result.message || 'Unbekannter Fehler');
@@ -219,13 +219,13 @@ class DashboardManager {
      */
     async restartWireGuard() {
         const confirmed = await this.showConfirmDialog(
-            'WireGuard Interface neu starten?',
-            'Dies kann zu kurzen Verbindungsunterbrechungen führen.'
+            i18n ? i18n.translate('notifications.confirm_restart') : 'WireGuard Interface neu starten?',
+            i18n ? i18n.translate('notifications.confirm_restart_message') : 'Dies kann zu kurzen Verbindungsunterbrechungen führen.'
         );
 
         if (!confirmed) return;
 
-        this.showLoading('Interface wird neu gestartet...');
+        this.showLoading(i18n ? i18n.translate('notifications.wireguard_restarting') : 'Interface wird neu gestartet...');
 
         try {
             const response = await this.apiRequest('/api/restart-wireguard', {
@@ -235,7 +235,7 @@ class DashboardManager {
             const result = await response.json();
 
             if (result.success) {
-                this.showSuccess('WireGuard erfolgreich neu gestartet');
+                this.showSuccess(i18n ? i18n.translate('notifications.wireguard_restarted') : 'WireGuard erfolgreich neu gestartet');
                 setTimeout(() => location.reload(), 3000);
             } else {
                 this.showError(result.message || 'Fehler beim Neustart');
@@ -471,34 +471,94 @@ class DashboardManager {
     }
 
     /**
-     * Copy to Clipboard mit besserer UX
+     * Copy to Clipboard mit verbesserter UX und Mehrsprachen-Support
      */
     async copyToClipboard(elementId) {
         const element = document.getElementById(elementId);
-        if (!element) return;
+        if (!element) {
+            console.error(`Element mit ID '${elementId}' nicht gefunden`);
+            return;
+        }
 
         const text = element.textContent || element.innerText;
+        
+        // Finde den zugehörigen Button - verbesserte Selektion
+        const button = document.querySelector(`button[onclick="copyToClipboard('${elementId}')"]`) ||
+                     document.querySelector(`button[onclick*="${elementId}"]`);
 
         try {
             await navigator.clipboard.writeText(text);
             
-            // Visuelles Feedback
+            // Verbessertes visuelles Feedback
             const originalBg = element.style.backgroundColor;
             const originalColor = element.style.color;
             const originalText = element.innerHTML;
+            const originalButtonText = button ? button.innerHTML : '';
+            const originalButtonClass = button ? button.className : '';
 
+            // Element-Feedback mit Transition
+            element.style.transition = 'all 0.3s ease';
             element.style.backgroundColor = '#10B981';
             element.style.color = 'white';
-            element.innerHTML = '✅ Kopiert!';
+            element.style.padding = '4px';
+            element.innerHTML = `✅ ${i18n ? i18n.translate('dashboard.copied') : 'Kopiert!'}`;
 
+            // Button-Feedback
+            if (button) {
+                button.style.transition = 'all 0.3s ease';
+                button.innerHTML = `✅ ${i18n ? i18n.translate('dashboard.copied') : 'Kopiert!'}`;
+                button.className = button.className.replace(/bg-\w+-\d+/, 'bg-green-500').replace(/hover:bg-\w+-\d+/, 'hover:bg-green-600');
+                button.disabled = true;
+            }
+
+            // Erfolgs-Animation
+            element.style.transform = 'scale(1.05)';
+            setTimeout(() => {
+                element.style.transform = 'scale(1)';
+            }, 200);
+
+            // Zusätzliche Toast-Notification
+            this.showNotification(
+                i18n ? i18n.translate('dashboard.copied') : 'In Zwischenablage kopiert!', 
+                'success'
+            );
+
+            // Reset nach 2.5 Sekunden
             setTimeout(() => {
                 element.style.backgroundColor = originalBg;
                 element.style.color = originalColor;
+                element.style.padding = '';
+                element.style.transition = '';
                 element.innerHTML = originalText;
-            }, 2000);
+                
+                if (button) {
+                    button.innerHTML = originalButtonText;
+                    button.className = originalButtonClass;
+                    button.style.transition = '';
+                    button.disabled = false;
+                }
+            }, 2500);
 
         } catch (error) {
-            this.showError('Fehler beim Kopieren in die Zwischenablage');
+            console.error('Clipboard error:', error);
+            this.showError(i18n ? i18n.translate('dashboard.copy_error') : 'Fehler beim Kopieren in die Zwischenablage');
+            
+            // Fallback für ältere Browser
+            try {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                this.showNotification(
+                    i18n ? i18n.translate('dashboard.copied') : 'In Zwischenablage kopiert!', 
+                    'success'
+                );
+            } catch (fallbackError) {
+                console.error('Fallback copy failed:', fallbackError);
+            }
         }
     }
 
@@ -605,10 +665,10 @@ class DashboardManager {
                     <p class="text-gray-600 mb-6">${message}</p>
                     <div class="flex justify-end space-x-3">
                         <button class="cancel-btn px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors">
-                            Abbrechen
+                            ${i18n ? i18n.translate('notifications.cancel') : 'Abbrechen'}
                         </button>
                         <button class="confirm-btn px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors">
-                            Bestätigen
+                            ${i18n ? i18n.translate('notifications.confirm') : 'Bestätigen'}
                         </button>
                     </div>
                 </div>
@@ -704,10 +764,10 @@ class DashboardManager {
                     
                     <div class="flex justify-end space-x-3">
                         <button type="button" class="cancel-btn px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors">
-                            Abbrechen
+                            ${i18n ? i18n.translate('notifications.cancel') : 'Abbrechen'}
                         </button>
                         <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors">
-                            Speichern
+                            ${i18n ? i18n.translate('notifications.save') : 'Speichern'}
                         </button>
                     </div>
                 </form>
@@ -750,10 +810,13 @@ class DashboardManager {
             const response = await this.apiRequest('/api/clients');
             const clients = await response.json();
             
-            // Client mit matchendem Public Key finden
-            const client = clients.find(c => c.public_key === publicKey);
+            // Client mit matchendem Public Key finden (clients ist ein Array)
+            const client = Array.isArray(clients) 
+                ? clients.find(c => c.public_key === publicKey)
+                : null;
+                
             if (!client) {
-                this.showError('Client nicht gefunden');
+                this.showError(i18n ? i18n.translate('notifications.error_unknown') : 'Client nicht gefunden');
                 modal.remove();
                 return;
             }

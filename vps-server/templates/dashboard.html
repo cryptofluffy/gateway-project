@@ -1,16 +1,39 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - WireGuard Gateway{% endblock %}
+{% block title %}<span data-i18n="dashboard.title">Dashboard - WireGuard Gateway</span>{% endblock %}
 
 {% block content %}
+<!-- Navigation -->
+<nav class="bg-white shadow-lg mb-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 flex items-center">
+                    <a href="/" class="text-2xl font-bold text-indigo-600">🔒 WireGuard Gateway</a>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <a href="/" class="text-gray-600 hover:text-indigo-600 transition-colors">
+                    <span data-i18n="nav.home">Home</span>
+                </a>
+                <a href="/dashboard" class="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium">
+                    <span data-i18n="nav.dashboard">Dashboard</span>
+                </a>
+                <a href="/port-forwards" class="text-gray-600 hover:text-indigo-600 transition-colors">
+                    <span data-i18n="nav.port_forwards">Port Forwards</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</nav>
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
     <!-- Tunnel Status -->
     <div class="bg-white rounded-lg shadow-md p-6">
         <div class="flex items-center justify-between">
             <div>
-                <h3 class="text-lg font-semibold text-gray-700">Tunnel Status</h3>
+                <h3 class="text-lg font-semibold text-gray-700" data-i18n="dashboard.tunnel_status">Tunnel Status</h3>
                 <p class="text-2xl font-bold {% if status.status == 'active' %}text-green-600{% else %}text-red-600{% endif %}">
-                    {% if status.status == 'active' %}Aktiv{% else %}Inaktiv{% endif %}
+                    <span data-i18n="{% if status.status == 'active' %}dashboard.active{% else %}dashboard.inactive{% endif %}">{% if status.status == 'active' %}Aktiv{% else %}Inaktiv{% endif %}</span>
                 </p>
             </div>
             <div id="tunnel-status" class="inline-block w-4 h-4 {% if status.status == 'active' %}bg-green-500{% else %}bg-red-500{% endif %} rounded-full"></div>
@@ -21,7 +44,7 @@
     <div class="bg-white rounded-lg shadow-md p-6">
         <div class="flex items-center justify-between">
             <div>
-                <h3 class="text-lg font-semibold text-gray-700">Verbundene Clients</h3>
+                <h3 class="text-lg font-semibold text-gray-700" data-i18n="dashboard.connected_clients">Verbundene Clients</h3>
                 <p id="client-count" class="text-2xl font-bold text-blue-600">{{ clients|length }}</p>
             </div>
             <div class="text-blue-500">
@@ -36,7 +59,7 @@
     <div class="bg-white rounded-lg shadow-md p-6">
         <div class="flex items-center justify-between">
             <div>
-                <h3 class="text-lg font-semibold text-gray-700">Port-Weiterleitungen</h3>
+                <h3 class="text-lg font-semibold text-gray-700" data-i18n="dashboard.port_forwards">Port-Weiterleitungen</h3>
                 <p class="text-2xl font-bold text-purple-600">{{ port_forwards|length }}</p>
             </div>
             <div class="text-purple-500">
@@ -49,10 +72,22 @@
 </div>
 
 <!-- WireGuard Interface Details -->
+<!-- Language Toggle -->
+<div class="flex justify-end mb-4">
+    <div class="bg-white rounded-lg shadow-md p-2">
+        <button id="lang-de" class="px-3 py-1 rounded bg-blue-500 text-white text-sm" onclick="setLanguage('de')">
+            🇩🇪 DE
+        </button>
+        <button id="lang-en" class="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm ml-1" onclick="setLanguage('en')">
+            🇺🇸 EN
+        </button>
+    </div>
+</div>
+
 <div class="bg-white rounded-lg shadow-md p-6 mb-6">
     <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-bold text-gray-800">WireGuard Interface Details</h2>
-        <button onclick="restartWireGuard()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors">
+        <h2 class="text-xl font-bold text-gray-800" data-i18n="dashboard.interface_details">WireGuard Interface Details</h2>
+        <button onclick="restartWireGuard()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors" data-i18n="dashboard.restart_interface">
             Interface neu starten
         </button>
     </div>
@@ -66,7 +101,7 @@
 
 <!-- Verbundene Clients -->
 <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-800 mb-4">Verbundene Clients</h2>
+    <h2 class="text-xl font-bold text-gray-800 mb-4" data-i18n="dashboard.connected_clients">Verbundene Clients</h2>
     
     {% if clients %}
     <div class="overflow-x-auto">
@@ -301,5 +336,6 @@
     {% endif %}
 </div>
 
+<script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

@@ -1,159 +1,116 @@
-# WireGuard Gateway System
+# WireGuard Gateway - Projekt Übersicht
 
-Eine komplette WireGuard-basierte Gateway-Lösung für sichere Netzwerk-Tunneling zwischen Heimnetzwerk und VPS.
+Ein sicheres VPN-Gateway-System mit WireGuard-Technologie, bestehend aus drei Hauptkomponenten:
 
-## 🎯 Projektübersicht
+## 📁 Projektstruktur
 
-Das System besteht aus einem Gateway-Gerät (Raspberry Pi/Mini-PC) mit 2 LAN-Ports, das einen permanenten verschlüsselten Tunnel zu einem VPS aufbaut. Server werden am Gateway angeschlossen und erhalten Internet-Zugang über den VPS-Tunnel.
+### 🖥️ **vps-server/**
+VPS/Cloud-Server Anwendung mit Web-Dashboard
+- **Port:** 5000 (Management Interface)
+- **Features:** Client-Management, Port-Weiterleitungen, Monitoring
+- **Technologie:** Python Flask, WireGuard
 
-```
-Internet ←→ [Router] ←→ Port A [Gateway-PC] Port B ←→ [Server]
-                            ↓ WireGuard Tunnel
-                          [VPS] ←→ Internet
-```
+### 🏠 **gateway-pc/**
+Gateway-Client für lokale Netzwerke
+- **Hardware:** Raspberry Pi, Linux PC, Router
+- **Features:** Automatische VPN-Verbindung, Netzwerk-Bridging
+- **Technologie:** Python, WireGuard, Network Interface Management
 
-## 🏗️ Netzwerk-Architektur
-
-- **Port A (eth0)**: Heimnetzwerk-Anschluss (192.168.1.254/24)
-- **Port B (eth1)**: Server-Netzwerk (10.0.0.1/24) 
-- **WireGuard**: Tunnel-Interface (10.8.0.2 ↔ 10.8.0.1)
-- **VPS**: Web-Interface für Port-Weiterleitungen
-
-## 📦 Komponenten
-
-### VPS-Server (`/vps-server/`)
-- **Flask Web-Interface** für Management
-- **REST-API** für Port-Weiterleitungen
-- **WireGuard-Server** mit automatischer Konfiguration
-- **Automatisches Setup-Script**
-
-### Gateway-PC (`/gateway-pc/`)
-- **Python Command-Line Tool** für Tunnel-Management
-- **Tkinter GUI-Anwendung** für einfache Bedienung
-- **Automatische Netzwerk-Konfiguration** (2 LAN-Ports)
-- **DHCP-Server** für angeschlossene Server
-- **Monitoring & Auto-Reconnect**
+### 🌐 **website/**
+Produkt-Website mit Downloads
+- **Port:** 8000 (Public Website)
+- **Features:** Landing Page, Download-Center, Mehrsprachen-Support
+- **Technologie:** Flask, TailwindCSS, i18n
 
 ## 🚀 Quick Start
 
-### 1. VPS installieren
-
+### 1. VPS Server Setup
 ```bash
-git clone https://github.com/DEIN_USERNAME/wireguard-gateway.git
-cd wireguard-gateway/vps-server
-sudo ./install.sh
+cd vps-server
+sudo bash install.sh
+# Läuft auf http://YOUR_VPS_IP:5000
 ```
 
-### 2. Gateway-PC installieren
-
+### 2. Gateway PC Setup
 ```bash
-git clone https://github.com/DEIN_USERNAME/wireguard-gateway.git
-cd wireguard-gateway/gateway-pc
-sudo ./install.sh
-sudo reboot
+cd gateway-pc
+sudo bash install.sh
+# Konfiguration über GUI oder Kommandozeile
 ```
 
-### 3. Gateway konfigurieren
-
+### 3. Website (Optional)
 ```bash
-# VPS Public Key vom Web-Interface kopieren
-gateway-manager setup <VPS_IP> <VPS_PUBLIC_KEY>
-gateway-manager start
-```
-
-### 4. Web-Interface öffnen
-
-`http://VPS_IP:8080` - Port-Weiterleitungen verwalten
-
-## 🖥️ Benutzeroberflächen
-
-### VPS Web-Interface
-- Dashboard mit Tunnel-Status
-- Port-Weiterleitungen per Klick
-- Verbundene Clients anzeigen
-- WireGuard-Service steuern
-
-### Gateway-PC GUI
-```bash
-gateway-gui
-```
-- Live-Status und Statistiken
-- Tunnel-Kontrolle
-- Konfiguration per Dialog
-- System-Logs
-
-### Command-Line Tools
-```bash
-gateway-manager setup <VPS_IP> <VPS_KEY>    # Konfigurieren
-gateway-manager start                       # Starten
-gateway-manager status                      # Status
-gateway-manager monitor                     # Monitoring
+cd website
+pip3 install -r requirements.txt
+python3 app.py
+# Läuft auf http://localhost:8000
 ```
 
 ## 🔧 Systemanforderungen
 
-### VPS
-- **Ubuntu 22.04+** / Debian 11+
-- **512 MB RAM** (minimal)
-- **Öffentliche IP-Adresse**
-- **Ports**: 51820/UDP (WireGuard), 8080/TCP (Web)
+- **OS:** Ubuntu 18.04+, Debian 10+, CentOS 7+, Raspberry Pi OS
+- **Netzwerk:** Internet-Verbindung, offene Ports (51820/UDP für WireGuard)
+- **Berechtigung:** Root-Zugriff für Installation
+- **Hardware:** Mindestens 512MB RAM, 1GB Speicher
 
-### Gateway-PC
-- **Raspberry Pi 4** oder Mini-PC
-- **2x Ethernet-Ports**
-- **Ubuntu 22.04+**
-- **1 GB RAM**
+## 🌟 Features
 
-## 🔐 Sicherheitsfeatures
+### VPS Server
+- 📊 **Real-time Dashboard** - Live-Monitoring aller Verbindungen
+- 👥 **Client Management** - Einfache Verwaltung von Gateway-PCs
+- 🔀 **Port Forwarding** - Sichere Weiterleitung von Ports
+- 🌍 **Multi-Language** - Deutsch & Englisch Support
+- 🔒 **Security** - Rate Limiting, Input Validation
 
-- **WireGuard-Verschlüsselung** für alle Datenübertragung
-- **Netzwerk-Isolation** zwischen Heim- und Server-Netz
-- **Automatische Firewall-Regeln** (iptables)
-- **Keine direkte Exposition** der Server ins Internet
+### Gateway PC
+- 🔄 **Auto-Connect** - Automatische VPN-Verbindung zum VPS
+- 🌐 **Network Bridge** - Transparente Netzwerk-Integration
+- ⚡ **Interface Detection** - Automatische Netzwerk-Interface Erkennung
+- 🎛️ **Manual Config** - Manuelle Konfiguration für spezielle Setups
+- 📱 **GUI Management** - Benutzerfreundliche Oberfläche
 
-## 📋 Anwendungsfälle
+### Website
+- 🎨 **Modern Design** - Responsive Landing Page
+- 📥 **Download Center** - Direkte Downloads für beide Komponenten
+- 🌍 **Internationalization** - DE/EN Sprach-Support
+- 📋 **Documentation** - Vollständige Setup-Anleitungen
 
-- **Home-Lab Server** sicher von außen erreichen
-- **Development-Umgebungen** ohne Port-Forwarding am Router
-- **IoT-Geräte** in isoliertem Netz betreiben
-- **Backup-Server** mit verschlüsseltem Zugang
-- **Media-Server** (Plex, Jellyfin) über VPS
+## 🔗 Verbindungsablauf
 
-## 🔍 Troubleshooting
+1. **VPS Setup** → WireGuard Server läuft auf Port 51820
+2. **Gateway Installation** → Verbindet sich automatisch zum VPS
+3. **Netzwerk-Bridge** → Gateway leitet lokalen Traffic über VPN
+4. **Port-Weiterleitungen** → Externe Ports → VPS → Gateway → Lokale Services
 
-### VPS
-```bash
-systemctl status wg-quick@wg0
-systemctl status wireguard-gateway
-journalctl -u wireguard-gateway -f
-```
+## 📋 Port-Übersicht
 
-### Gateway-PC
-```bash
-systemctl status wireguard-gateway
-gateway-manager status
-gateway-gui  # Logs-Tab
-```
+| Service | Port | Beschreibung |
+|---------|------|--------------|
+| WireGuard VPN | 51820/UDP | VPN-Tunnel |
+| VPS Dashboard | 5000/TCP | Management Interface |
+| Website | 8000/TCP | Public Landing Page |
 
-## 📖 Dokumentation
+## 🛡️ Sicherheit
 
-- [VPS Setup Guide](vps-server/README.md)
-- [Gateway-PC Setup Guide](gateway-pc/README.md)
+- **WireGuard Encryption** - ChaCha20, Poly1305, Curve25519
+- **Rate Limiting** - Schutz vor Brute-Force-Angriffen
+- **Input Validation** - Sichere Behandlung aller Eingaben
+- **Firewall Ready** - Konfiguration für iptables/ufw
 
-## 🤝 Beitragen
+## 📚 Weitere Dokumentation
 
-1. Fork das Repository
-2. Feature-Branch erstellen (`git checkout -b feature/amazing-feature`)
-3. Commit deine Änderungen (`git commit -m 'Add amazing feature'`)
-4. Push zum Branch (`git push origin feature/amazing-feature`)
-5. Pull Request öffnen
+- **VPS Server:** `vps-server/README.md`
+- **Gateway PC:** `gateway-pc/README.md`
+- **Deployment:** `vps-server/deploy.md`
 
-## 📄 Lizenz
+## 🆘 Support
 
-Dieses Projekt steht unter der MIT-Lizenz. Siehe [LICENSE](LICENSE) für Details.
+Bei Problemen:
+1. Prüfen Sie die Logs: `journalctl -u wireguard-gateway`
+2. Firewall-Einstellungen für Port 51820/UDP
+3. Netzwerk-Konnektivität zwischen VPS und Gateway
+4. Root-Berechtigung für WireGuard-Befehle
 
-## 🙏 Acknowledgments
+---
 
-- WireGuard-Team für das großartige VPN-Protokoll
-- Flask-Community für das Web-Framework
-- Alle Open-Source-Beiträger
+🔒 **WireGuard Gateway** - Sichere Netzwerk-Verbindungen leicht gemacht!
