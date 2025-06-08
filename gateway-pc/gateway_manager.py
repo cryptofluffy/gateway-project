@@ -117,34 +117,78 @@ PersistentKeepalive = 25
     
     def setup_network_interfaces(self):
         """Konfiguriere Netzwerk-Interfaces für Gateway-Funktion"""
-        commands = [
-            # eth0 für Heimnetzwerk (Port A)
-            ['ip', 'addr', 'add', '192.168.1.254/24', 'dev', 'eth0'],
-            ['ip', 'link', 'set', 'eth0', 'up'],
-            
-            # eth1 für Server-Netzwerk (Port B)  
-            ['ip', 'addr', 'add', '10.0.0.1/24', 'dev', 'eth1'],
-            ['ip', 'link', 'set', 'eth1', 'up'],
-            
-            # IP-Forwarding aktivieren
-            ['sysctl', '-w', 'net.ipv4.ip_forward=1'],
+        print("🌐 Netzwerk-Interfaces werden konfiguriert...")
+        
+        # Interface-Konfigurationen
+        interfaces = [
+            {'dev': 'eth0', 'ip': '192.168.1.254/24', 'desc': 'Heimnetzwerk (Port A)'},
+            {'dev': 'eth1', 'ip': '10.0.0.1/24', 'desc': 'Server-Netzwerk (Port B)'}
         ]
         
-        for cmd in commands:
+        for iface in interfaces:
             try:
-                subprocess.run(cmd, check=True)
-            except subprocess.CalledProcessError as e:
-                print(f"Fehler bei Netzwerk-Setup: {cmd} - {e}")
-                return False
+                # Entferne bestehende IP-Adressen auf dem Interface
+                subprocess.run(['ip', 'addr', 'flush', 'dev', iface['dev']], 
+                              capture_output=True, text=True)
+                
+                # Füge neue IP-Adresse hinzu
+                result = subprocess.run(['ip', 'addr', 'add', iface['ip'], 'dev', iface['dev']], 
+                                      capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    # Prüfe ob die Adresse bereits existiert (ist OK)
+                    if "File exists" in result.stderr or "cannot assign requested address" in result.stderr.lower():
+                        print(f"ℹ️ IP {iface['ip']} bereits auf {iface['dev']} vorhanden")
+                    else:
+                        print(f"⚠️ Warnung bei {iface['desc']}: {result.stderr}")
+                
+                # Interface aktivieren
+                subprocess.run(['ip', 'link', 'set', iface['dev'], 'up'], 
+                              capture_output=True, text=True)
+                
+            except Exception as e:
+                print(f"Fehler bei Netzwerk-Setup: {iface['desc']} - {e}")
+                print("⚠️ Netzwerk-Konfiguration teilweise fehlgeschlagen (normal bei erstem Setup)")
+        
+        # IP-Forwarding aktivieren
+        try:
+            subprocess.run(['sysctl', '-w', 'net.ipv4.ip_forward=1'], 
+                          capture_output=True, text=True)
+        except Exception as e:
+            print(f"IP-Forwarding Fehler: {e}")
+                
         return True
     
+    def cleanup_existing_interfaces(self):
+        """Bereinige bestehende WireGuard-Interfaces"""
+        try:
+            print("🧹 Bereinige bestehende WireGuard-Interfaces...")
+            
+            # Explizit das Gateway-Interface bereinigen
+            subprocess.run(['wg-quick', 'down', 'gateway'], 
+                          capture_output=True, text=True)
+            
+            # Zusätzlich manuell Interface entfernen falls noch vorhanden
+            subprocess.run(['ip', 'link', 'delete', 'gateway'], 
+                          capture_output=True, text=True)
+            
+            return True
+        except Exception as e:
+            # Fehler hier sind normal (Interface existiert möglicherweise nicht)
+            return True
+
     def start_tunnel(self):
         """Starte WireGuard-Tunnel"""
         try:
+            # Bereinige bestehende Interfaces
+            self.cleanup_existing_interfaces()
+            
+            print("🚀 Starte Gateway...")
             result = subprocess.run(['wg-quick', 'up', 'gateway'], 
                                   capture_output=True, text=True)
             if result.returncode == 0:
                 self.is_connected = True
+                print("✅ Gateway erfolgreich gestartet!")
                 return True
             else:
                 print(f"Fehler beim Starten des Tunnels: {result.stderr}")
