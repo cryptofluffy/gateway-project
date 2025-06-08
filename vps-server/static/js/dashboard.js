@@ -8,7 +8,6 @@ class DashboardManager {
         this.initializeEventListeners();
         this.loadingOverlay = this.createLoadingOverlay();
         this.loadNetworkInterfaces();
-        this.updateInterfaceAvailability();
     }
 
     /**
@@ -73,21 +72,10 @@ class DashboardManager {
         const getLocation = () => formData.get('gateway_location')?.trim() || document.getElementById('gateway_location')?.value?.trim() || '';
         const getPublicKey = () => formData.get('gateway_public_key')?.trim() || document.getElementById('gateway_public_key')?.value?.trim() || '';
         
-        // Netzwerkschnittstellen-Konfiguration sammeln
-        const wanInterface = document.getElementById('wan_interface')?.value || 'auto';
-        const lanInterface = document.getElementById('lan_interface')?.value || 'auto';
-        const customWan = document.getElementById('custom_wan')?.value?.trim();
-        const customLan = document.getElementById('custom_lan')?.value?.trim();
-        
         const data = {
             name: getName(),
             location: getLocation(),
-            public_key: getPublicKey(),
-            network_config: {
-                wan_interface: wanInterface === 'custom' ? customWan : wanInterface,
-                lan_interface: lanInterface === 'custom' ? customLan : lanInterface,
-                auto_detect: wanInterface === 'auto' || lanInterface === 'auto'
-            }
+            public_key: getPublicKey()
         };
 
         // Debug-Ausgabe
@@ -521,8 +509,6 @@ class DashboardManager {
                 tunnelStatus.className = `inline-block w-4 h-4 ${isActive ? 'bg-green-500' : 'bg-red-500'} rounded-full`;
             }
 
-            // Update Interface Availability basierend auf Client-Count
-            this.updateInterfaceAvailability();
 
         } catch (error) {
             console.warn('Status update failed:', error);
@@ -690,55 +676,6 @@ class DashboardManager {
         }
     }
 
-    /**
-     * Netzwerk-Interface Verfügbarkeit basierend auf Client-Status aktualisieren
-     */
-    updateInterfaceAvailability() {
-        // Prüfe ob Clients verbunden sind
-        const clientCountElement = document.querySelector('[data-metric="connected_clients"] .text-3xl');
-        const clientCount = clientCountElement ? parseInt(clientCountElement.textContent) || 0 : 0;
-        const hasClients = clientCount > 0;
-        
-        const wanSelect = document.getElementById('wan_interface');
-        const lanSelect = document.getElementById('lan_interface');
-        const interfaceInfo = document.getElementById('interface-info');
-        const customDiv = document.getElementById('custom-interfaces');
-        
-        if (hasClients) {
-            // Interface-Auswahl aktivieren
-            if (wanSelect) {
-                wanSelect.disabled = false;
-                wanSelect.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
-            if (lanSelect) {
-                lanSelect.disabled = false;
-                lanSelect.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
-            if (interfaceInfo) {
-                interfaceInfo.innerHTML = '✅ Interface-Konfiguration verfügbar';
-                interfaceInfo.className = 'text-sm text-green-600 mb-3';
-            }
-        } else {
-            // Interface-Auswahl deaktivieren
-            if (wanSelect) {
-                wanSelect.disabled = true;
-                wanSelect.classList.add('opacity-50', 'cursor-not-allowed');
-                wanSelect.value = 'auto';
-            }
-            if (lanSelect) {
-                lanSelect.disabled = true;
-                lanSelect.classList.add('opacity-50', 'cursor-not-allowed');
-                lanSelect.value = 'auto';
-            }
-            if (interfaceInfo) {
-                interfaceInfo.innerHTML = 'ℹ️ Verfügbar nach der ersten Gateway-Verbindung';
-                interfaceInfo.className = 'text-sm text-blue-600 mb-3';
-            }
-            if (customDiv) {
-                customDiv.classList.add('hidden');
-            }
-        }
-    }
 
     /**
      * Loading Overlay erstellen
