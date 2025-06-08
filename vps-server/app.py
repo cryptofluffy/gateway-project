@@ -349,11 +349,11 @@ class ClientManager:
     def __init__(self, config_manager: ConfigManager):
         self.config_manager = config_manager
         self.clients_file = config.CLIENTS_FILE
-        self.clients = self._load_clients()
         self._file_mtime = 0
         self._client_cache = {}
         self._peers_cache = None
         self._peers_cache_time = 0
+        self.clients = self._load_clients()
     
     def _load_clients(self) -> Dict:
         """Lade gespeicherte Client-Informationen mit Caching"""
@@ -363,10 +363,12 @@ class ClientManager:
             # Nur neu laden wenn Datei geändert wurde
             if current_mtime > self._file_mtime:
                 self._file_mtime = current_mtime
-                self.clients = FileManager.safe_read_json(self.clients_file, {})
+                clients = FileManager.safe_read_json(self.clients_file, {})
                 self._client_cache.clear()  # Cache invalidieren
-                
-            return self.clients
+                return clients
+            
+            # Wenn bereits geladen, return cached version
+            return getattr(self, 'clients', {})
         except (OSError, IOError) as e:
             logger.warning(f"Could not check file modification time: {e}")
             return FileManager.safe_read_json(self.clients_file, {})
