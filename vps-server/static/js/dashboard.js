@@ -8,6 +8,7 @@ class DashboardManager {
         this.initializeEventListeners();
         this.loadingOverlay = this.createLoadingOverlay();
         this.loadNetworkInterfaces();
+        this.updateInterfaceAvailability();
     }
 
     /**
@@ -345,14 +346,14 @@ class DashboardManager {
             return { valid: false, message: 'Gateway-Name ist zu lang (max. 50 Zeichen)' };
         }
 
-        if (!data.public_key || data.public_key.length < 40) {
+        if (!data.public_key || data.public_key.trim().length < 20) {
             return { valid: false, message: 'Gültiger WireGuard Public Key erforderlich' };
         }
 
-        // WireGuard Key Format prüfen (Base64)
-        const keyPattern = /^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=?$/;
-        if (!keyPattern.test(data.public_key)) {
-            return { valid: false, message: 'Ungültiges WireGuard Key Format' };
+        // WireGuard Key Format prüfen (lockerer Base64 Check)
+        const keyPattern = /^[A-Za-z0-9+/]+=*$/;
+        if (!keyPattern.test(data.public_key.trim())) {
+            return { valid: false, message: 'Ungültiges WireGuard Key Format (Base64 erwartet)' };
         }
 
         if (data.location && data.location.length > 100) {
@@ -520,6 +521,9 @@ class DashboardManager {
                 tunnelStatus.className = `inline-block w-4 h-4 ${isActive ? 'bg-green-500' : 'bg-red-500'} rounded-full`;
             }
 
+            // Update Interface Availability basierend auf Client-Count
+            this.updateInterfaceAvailability();
+
         } catch (error) {
             console.warn('Status update failed:', error);
         }
@@ -682,6 +686,56 @@ class DashboardManager {
                         'info'
                     );
                 }
+            }
+        }
+    }
+
+    /**
+     * Netzwerk-Interface Verfügbarkeit basierend auf Client-Status aktualisieren
+     */
+    updateInterfaceAvailability() {
+        // Prüfe ob Clients verbunden sind
+        const clientCountElement = document.querySelector('[data-metric="connected_clients"] .text-3xl');
+        const clientCount = clientCountElement ? parseInt(clientCountElement.textContent) || 0 : 0;
+        const hasClients = clientCount > 0;
+        
+        const wanSelect = document.getElementById('wan_interface');
+        const lanSelect = document.getElementById('lan_interface');
+        const interfaceInfo = document.getElementById('interface-info');
+        const customDiv = document.getElementById('custom-interfaces');
+        
+        if (hasClients) {
+            // Interface-Auswahl aktivieren
+            if (wanSelect) {
+                wanSelect.disabled = false;
+                wanSelect.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+            if (lanSelect) {
+                lanSelect.disabled = false;
+                lanSelect.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+            if (interfaceInfo) {
+                interfaceInfo.innerHTML = '✅ Interface-Konfiguration verfügbar';
+                interfaceInfo.className = 'text-sm text-green-600 mb-3';
+            }
+        } else {
+            // Interface-Auswahl deaktivieren
+            if (wanSelect) {
+                wanSelect.disabled = true;
+                wanSelect.classList.add('opacity-50', 'cursor-not-allowed');
+                wanSelect.value = 'auto';
+            }
+            if (lanSelect) {
+                lanSelect.disabled = true;
+                lanSelect.classList.add('opacity-50', 'cursor-not-allowed');
+                lanSelect.value = 'auto';
+            }
+            if (interfaceInfo) {
+                interfaceInfo.innerHTML = 'ℹ️ Verfügbar nach der ersten Gateway-Verbindung';
+                interfaceInfo.className = 'text-sm text-blue-600 mb-3';
+            }
+            if (customDiv) {
+                customDiv.classList.add('hidden');
             }
         }
     }
