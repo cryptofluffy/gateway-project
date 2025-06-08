@@ -33,8 +33,87 @@ class WireGuardGateway:
                     config = json.load(f)
                     self.vps_endpoint = config.get('vps_endpoint')
                     self.vps_public_key = config.get('vps_public_key')
+                    # VPS API-Endpunkt für automatische Key-Updates
+                    self.vps_api_url = config.get('vps_api_url')
         except Exception as e:
             print(f"Fehler beim Laden der Konfiguration: {e}")
+    
+    def fetch_vps_public_key(self, vps_api_url):
+        """Hole aktuellen VPS Public Key vom VPS Dashboard API"""
+        try:
+            print("🔄 Hole aktuellen VPS Public Key vom Dashboard...")
+            
+            # API-Endpunkt aufrufen
+            response = requests.get(f"{vps_api_url}/api/vps-info", timeout=10)
+            
+            if response.status_code == 200:
+                vps_info = response.json()
+                if vps_info.get('success') and vps_info.get('public_key'):
+                    print("✅ VPS Public Key erfolgreich abgerufen")
+                    return {
+                        'public_key': vps_info['public_key'],
+                        'endpoint': vps_info.get('endpoint')
+                    }
+                else:
+                    print(f"❌ Ungültige API-Antwort: {vps_info}")
+                    return None
+            else:
+                print(f"❌ API-Fehler: HTTP {response.status_code}")
+                return None
+                
+        except requests.exceptions.ConnectTimeout:
+            print("❌ Timeout beim Verbinden zum VPS Dashboard")
+        except requests.exceptions.ConnectionError:
+            print("❌ Verbindungsfehler zum VPS Dashboard")
+        except Exception as e:
+            print(f"❌ Fehler beim Abrufen des VPS Public Key: {e}")
+        
+        return None
+    
+    def update_vps_public_key(self):
+        """Aktualisiere VPS Public Key automatisch"""
+        if not self.vps_api_url:
+            print("⚠️ Keine VPS API URL konfiguriert")
+            return False
+        
+        vps_info = self.fetch_vps_public_key(self.vps_api_url)
+        if vps_info:
+            old_key = self.vps_public_key
+            self.vps_public_key = vps_info['public_key']
+            
+            if vps_info.get('endpoint'):
+                self.vps_endpoint = vps_info['endpoint']
+            
+            if old_key != self.vps_public_key:
+                print("🔄 VPS Public Key hat sich geändert - aktualisiere Konfiguration...")
+                
+                # Konfiguration speichern
+                try:
+                    with open('/etc/wireguard-gateway/config.json', 'r') as f:
+                        config = json.load(f)
+                    
+                    config['vps_public_key'] = self.vps_public_key
+                    config['vps_endpoint'] = self.vps_endpoint
+                    
+                    with open('/etc/wireguard-gateway/config.json', 'w') as f:
+                        json.dump(config, f, indent=2)
+                    
+                    # WireGuard-Konfiguration neu erstellen
+                    if self.create_wireguard_config():
+                        print("✅ Konfiguration mit neuem VPS Public Key aktualisiert")
+                        return True
+                    else:
+                        print("❌ Fehler beim Aktualisieren der WireGuard-Konfiguration")
+                        return False
+                        
+                except Exception as e:
+                    print(f"❌ Fehler beim Speichern der Konfiguration: {e}")
+                    return False
+            else:
+                print("ℹ️ VPS Public Key ist bereits aktuell")
+                return True
+        
+        return False
     
     def generate_keys(self):
         """Generiere WireGuard-Keys für das Gateway"""
@@ -57,16 +136,33 @@ class WireGuardGateway:
             print(f"Fehler beim Generieren der Keys: {e}")
             return False
     
-    def setup_initial_config(self, vps_ip, vps_public_key):
-        """Initiale Konfiguration des Gateways"""
-        self.vps_endpoint = f"{vps_ip}:51820"
-        self.vps_public_key = vps_public_key
+    def setup_initial_config(self, vps_api_url, vps_public_key=None):
+        """Initiale Konfiguration des Gateways mit automatischem VPS Key Abruf"""
+        self.vps_api_url = vps_api_url
+        
+        # Versuche VPS Public Key automatisch abzurufen
+        if not vps_public_key:
+            print("🔄 Kein VPS Public Key angegeben - versuche automatischen Abruf...")
+            vps_info = self.fetch_vps_public_key(vps_api_url)
+            if vps_info:
+                self.vps_public_key = vps_info['public_key']
+                self.vps_endpoint = vps_info.get('endpoint', f"{vps_api_url.split('://')[1].split(':')[0]}:51820")
+            else:
+                print("❌ Automatischer VPS Public Key Abruf fehlgeschlagen")
+                return False
+        else:
+            # Manuell übergebener Key (Fallback für alte Setup-Methode)
+            self.vps_public_key = vps_public_key
+            # Bestimme Endpoint aus API URL
+            api_host = vps_api_url.split('://')[1].split(':')[0]
+            self.vps_endpoint = f"{api_host}:51820"
         
         if not self.generate_keys():
             return False
         
         # Konfiguration speichern
         config = {
+            'vps_api_url': self.vps_api_url,
             'vps_endpoint': self.vps_endpoint,
             'vps_public_key': self.vps_public_key,
             'gateway_private_key': self.gateway_private_key,
@@ -178,8 +274,13 @@ PersistentKeepalive = 25
             return True
 
     def start_tunnel(self):
-        """Starte WireGuard-Tunnel"""
+        """Starte WireGuard-Tunnel mit automatischem VPS Key Update"""
         try:
+            # VPS Public Key vor dem Start aktualisieren
+            if self.vps_api_url:
+                print("🔄 Prüfe VPS Public Key vor Start...")
+                self.update_vps_public_key()
+            
             # Bereinige bestehende Interfaces
             self.cleanup_existing_interfaces()
             
@@ -333,7 +434,8 @@ class GatewayMonitor:
             self.monitor_thread.join()
     
     def _monitor_loop(self):
-        """Monitoring-Schleife"""
+        """Monitoring-Schleife mit VPS Key Updates"""
+        vps_key_check_counter = 0
         while self.running:
             try:
                 # Tunnel-Status prüfen
@@ -346,7 +448,21 @@ class GatewayMonitor:
                     time.sleep(5)
                     self.gateway.start_tunnel()
                 
+                # VPS Public Key alle 10 Minuten prüfen (20 * 30 Sekunden = 10 Minuten)
+                vps_key_check_counter += 1
+                if vps_key_check_counter >= 20 and self.gateway.vps_api_url:
+                    print("🔄 Regelmäßige VPS Public Key Prüfung...")
+                    if self.gateway.update_vps_public_key():
+                        # Tunnel neu starten wenn sich Key geändert hat
+                        if self.gateway.is_connected:
+                            print("🔄 VPS Key geändert - Tunnel wird neu gestartet...")
+                            self.gateway.stop_tunnel()
+                            time.sleep(2)
+                            self.gateway.start_tunnel()
+                    vps_key_check_counter = 0
+                
                 # Logs schreiben
+                os.makedirs('/var/log/wireguard-gateway', exist_ok=True)
                 with open('/var/log/wireguard-gateway/monitor.log', 'a') as f:
                     f.write(f"{datetime.now().isoformat()} - Status: {status['status']}\n")
                 
@@ -363,15 +479,23 @@ if __name__ == "__main__":
         command = sys.argv[1]
         
         if command == "setup":
-            if len(sys.argv) != 4:
-                print("Usage: python3 gateway_manager.py setup <VPS_IP> <VPS_PUBLIC_KEY>")
+            if len(sys.argv) < 3:
+                print("Usage:")
+                print("  python3 gateway_manager.py setup <VPS_API_URL>")
+                print("  python3 gateway_manager.py setup <VPS_API_URL> <VPS_PUBLIC_KEY>  (optional)")
+                print("")
+                print("Beispiel:")
+                print("  python3 gateway_manager.py setup http://192.168.1.100:8080")
+                print("  python3 gateway_manager.py setup https://myvps.example.com:8080")
                 sys.exit(1)
             
-            vps_ip = sys.argv[2]
-            vps_public_key = sys.argv[3]
+            vps_api_url = sys.argv[2]
+            vps_public_key = sys.argv[3] if len(sys.argv) > 3 else None
             
             print("🔧 Gateway wird konfiguriert...")
-            if gateway.setup_initial_config(vps_ip, vps_public_key):
+            print(f"📡 VPS Dashboard API: {vps_api_url}")
+            
+            if gateway.setup_initial_config(vps_api_url, vps_public_key):
                 print("✅ Gateway-Konfiguration erstellt")
                 
                 # Gateway Public Key prominent ausgeben für Copy&Paste
@@ -416,6 +540,27 @@ if __name__ == "__main__":
             if status['output']:
                 print(f"Details:\n{status['output']}")
         
+        elif command == "update-key":
+            print("🔄 Aktualisiere VPS Public Key...")
+            if gateway.update_vps_public_key():
+                print("✅ VPS Public Key erfolgreich aktualisiert")
+                
+                # Tunnel neu starten wenn er läuft
+                status = gateway.get_tunnel_status()
+                if status['status'] == 'connected':
+                    print("🔄 Tunnel wird mit neuem Key neu gestartet...")
+                    if gateway.stop_tunnel():
+                        time.sleep(2)
+                        if gateway.start_tunnel():
+                            print("✅ Tunnel erfolgreich mit neuem Key neu gestartet")
+                        else:
+                            print("❌ Fehler beim Neustart des Tunnels")
+                    else:
+                        print("❌ Fehler beim Stoppen des Tunnels")
+            else:
+                print("❌ Fehler beim Aktualisieren des VPS Public Key")
+                sys.exit(1)
+        
         elif command == "monitor":
             print("🔍 Starte Gateway-Monitoring...")
             monitor = GatewayMonitor(gateway)
@@ -435,8 +580,10 @@ if __name__ == "__main__":
     else:
         print("WireGuard Gateway Manager")
         print("Verfügbare Befehle:")
-        print("  setup <VPS_IP> <VPS_PUBLIC_KEY> - Gateway konfigurieren")
+        print("  setup <VPS_API_URL>             - Gateway konfigurieren (automatischer Key-Abruf)")
+        print("  setup <VPS_API_URL> <VPS_KEY>   - Gateway konfigurieren (manueller Key)")
         print("  start                           - Gateway starten")
         print("  stop                            - Gateway stoppen") 
         print("  status                          - Status anzeigen")
+        print("  update-key                      - VPS Public Key aktualisieren")
         print("  monitor                         - Monitoring starten")

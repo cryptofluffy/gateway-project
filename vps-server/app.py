@@ -902,6 +902,23 @@ def api_restart_wireguard():
         logger.error(f"Error in api_restart_wireguard: {e}")
         return jsonify({'success': False, 'message': f'Server-Fehler: {str(e)}'}), 500
 
+@app.route('/api/vps-info', methods=['GET'])
+@limiter.limit("10 per minute")
+def api_vps_info():
+    """API: VPS-Informationen für Gateway-Setup"""
+    try:
+        vps_info = config_manager.get_vps_info()
+        return jsonify({
+            'success': True,
+            'public_key': vps_info.get('public_key'),
+            'ip_address': vps_info.get('ip_address'),
+            'server_port': config.SERVER_PORT,
+            'endpoint': f"{vps_info.get('ip_address')}:{config.SERVER_PORT}" if vps_info.get('ip_address') else None
+        })
+    except Exception as e:
+        logger.error(f"Error in api_vps_info: {e}")
+        return jsonify({'success': False, 'message': f'Server-Fehler: {str(e)}'}), 500
+
 
 # Error Handlers
 @app.errorhandler(404)
