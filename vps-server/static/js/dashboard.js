@@ -67,6 +67,11 @@ class DashboardManager {
         
         const formData = new FormData(event.target);
         
+        // Robuste Datensammlung - Fallback zu getElementById falls FormData fehlschlägt
+        const getName = () => formData.get('gateway_name')?.trim() || document.getElementById('gateway_name')?.value?.trim() || '';
+        const getLocation = () => formData.get('gateway_location')?.trim() || document.getElementById('gateway_location')?.value?.trim() || '';
+        const getPublicKey = () => formData.get('gateway_public_key')?.trim() || document.getElementById('gateway_public_key')?.value?.trim() || '';
+        
         // Netzwerkschnittstellen-Konfiguration sammeln
         const wanInterface = document.getElementById('wan_interface')?.value || 'auto';
         const lanInterface = document.getElementById('lan_interface')?.value || 'auto';
@@ -74,15 +79,18 @@ class DashboardManager {
         const customLan = document.getElementById('custom_lan')?.value?.trim();
         
         const data = {
-            name: formData.get('gateway_name')?.trim(),
-            location: formData.get('gateway_location')?.trim(),
-            public_key: formData.get('gateway_public_key')?.trim(),
+            name: getName(),
+            location: getLocation(),
+            public_key: getPublicKey(),
             network_config: {
                 wan_interface: wanInterface === 'custom' ? customWan : wanInterface,
                 lan_interface: lanInterface === 'custom' ? customLan : lanInterface,
                 auto_detect: wanInterface === 'auto' || lanInterface === 'auto'
             }
         };
+
+        // Debug-Ausgabe
+        console.log('Form data being sent:', data);
 
         // Client-seitige Validierung
         const validation = this.validateGatewayData(data);
@@ -94,6 +102,8 @@ class DashboardManager {
         this.showLoading(i18n ? i18n.translate('notifications.gateway_adding') : 'Gateway wird hinzugefügt...');
 
         try {
+            console.log('Sending request to /api/clients with data:', JSON.stringify(data, null, 2));
+            
             const response = await this.apiRequest('/api/clients', {
                 method: 'POST',
                 headers: {
@@ -102,15 +112,22 @@ class DashboardManager {
                 body: JSON.stringify(data)
             });
 
+            console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers);
+
             const result = await response.json();
+            console.log('Response body:', result);
 
             if (result.success) {
                 this.showSuccess(i18n ? i18n.translate('notifications.gateway_added') : 'Gateway-Client erfolgreich hinzugefügt!');
+                // Form zurücksetzen
+                event.target.reset();
                 setTimeout(() => location.reload(), 1500);
             } else {
                 this.showError(result.message || 'Unbekannter Fehler');
             }
         } catch (error) {
+            console.error('Error details:', error);
             this.showError(`Netzwerk-Fehler: ${error.message}`);
         } finally {
             this.hideLoading();
@@ -248,7 +265,7 @@ class DashboardManager {
     }
 
     /**
-     * API-Request mit Fehlerbehandlung
+     * API-Request mit verbesserter Fehlerbehandlung
      */
     async apiRequest(url, options = {}) {
         const defaultOptions = {
@@ -266,13 +283,51 @@ class DashboardManager {
             }
         };
 
+        console.log(`Making ${mergedOptions.method || 'GET'} request to:`, url);
+        console.log('Request options:', mergedOptions);
+
         const response = await fetch(url, mergedOptions);
         
+        console.log('Response received:', {
+            status: response.status,
+            statusText: response.statusText,
+            ok: response.ok,
+            headers: Object.fromEntries(response.headers.entries())
+        });
+        
         if (!response.ok) {
+            let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            
+            // Versuche detailliertere Fehlermeldung aus Response zu extrahieren
+            try {
+                const errorBody = await response.text();
+                console.log('Error response body:', errorBody);
+                
+                // Versuche JSON zu parsen
+                try {
+                    const errorJson = JSON.parse(errorBody);
+                    if (errorJson.message) {
+                        errorMessage = errorJson.message;
+                    }
+                } catch (e) {
+                    // Fallback zu Text-Response
+                    if (errorBody) {
+                        errorMessage = errorBody;
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not read error response body:', e);
+            }
+            
             if (response.status === 429) {
                 throw new Error('Zu viele Anfragen. Bitte warten Sie einen Moment.');
+            } else if (response.status === 400) {
+                throw new Error(`Ungültige Anfrage: ${errorMessage}`);
+            } else if (response.status === 500) {
+                throw new Error(`Server-Fehler: ${errorMessage}`);
             }
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            
+            throw new Error(errorMessage);
         }
 
         return response;
