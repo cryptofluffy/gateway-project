@@ -4,6 +4,9 @@
 
 set -e
 
+# Automatische Installation ohne interaktive Dialoge
+export DEBIAN_FRONTEND=noninteractive
+
 echo "🚀 WireGuard Gateway PC Quick-Install"
 echo "======================================"
 

@@ -3,6 +3,9 @@
 
 set -e
 
+# Automatische Installation ohne interaktive Dialoge
+export DEBIAN_FRONTEND=noninteractive
+
 echo "🚀 WireGuard Gateway VPS Installation"
 echo "======================================"
 

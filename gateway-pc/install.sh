@@ -3,6 +3,9 @@
 
 set -e
 
+# Automatische Installation ohne interaktive Dialoge
+export DEBIAN_FRONTEND=noninteractive
+
 echo "🚀 WireGuard Gateway PC Installation"
 echo "===================================="
 
@@ -18,6 +21,11 @@ apt update && apt upgrade -y
 
 # Benötigte Pakete installieren
 echo "🔧 Pakete werden installiert..."
+
+# iptables-persistent vorkonfigurieren um interaktive Dialoge zu vermeiden
+echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
+echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
+
 apt install -y \
     wireguard \
     wireguard-tools \
