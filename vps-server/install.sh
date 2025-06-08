@@ -22,14 +22,18 @@ apt install -y wireguard wireguard-tools
 
 # Python und Flask installieren
 echo "🐍 Python-Abhängigkeiten werden installiert..."
-apt install -y python3 python3-pip python3-venv
-pip3 install -r requirements.txt
+apt install -y python3 python3-pip python3-venv python3-flask python3-requests
 
 # Verzeichnisse erstellen
 echo "📁 Verzeichnisse werden erstellt..."
 mkdir -p /etc/wireguard
-mkdir -p /var/log/wireguard-gateway
-mkdir -p /opt/wireguard-gateway
+mkdir -p /var/log/wireguard-vps
+mkdir -p /opt/wireguard-vps
+
+# Virtual environment für VPS erstellen
+echo "🐍 Python Virtual Environment wird erstellt..."
+python3 -m venv /opt/wireguard-vps/venv
+/opt/wireguard-vps/venv/bin/pip install -r requirements.txt
 
 # WireGuard Konfiguration generieren
 echo "🔑 WireGuard-Keys werden generiert..."
@@ -61,22 +65,22 @@ sysctl -p
 echo "🔄 WireGuard-Service wird aktiviert..."
 systemctl enable wg-quick@wg0
 
-# Gateway-App installieren
-echo "📱 Gateway-App wird installiert..."
-cp -r . /opt/wireguard-gateway/
-chmod +x /opt/wireguard-gateway/app.py
+# VPS-App installieren
+echo "📱 VPS-App wird installiert..."
+cp -r . /opt/wireguard-vps/
+chmod +x /opt/wireguard-vps/app.py
 
-# Systemd-Service für die Web-App erstellen
-cat > /etc/systemd/system/wireguard-gateway.service << EOF
+# Systemd-Service für die VPS-App erstellen
+cat > /etc/systemd/system/wireguard-vps.service << EOF
 [Unit]
-Description=WireGuard Gateway Web Interface
-After=network.target
+Description=WireGuard VPS Web Interface
+After=network.target wg-quick@wg0.service
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/wireguard-gateway
-ExecStart=/usr/bin/python3 /opt/wireguard-gateway/app.py
+WorkingDirectory=/opt/wireguard-vps
+ExecStart=/opt/wireguard-vps/venv/bin/python /opt/wireguard-vps/app.py
 Restart=always
 RestartSec=5
 
@@ -86,8 +90,8 @@ EOF
 
 # Service aktivieren und starten
 systemctl daemon-reload
-systemctl enable wireguard-gateway
-systemctl start wireguard-gateway
+systemctl enable wireguard-vps
+systemctl start wireguard-vps
 
 # UFW Firewall konfigurieren (falls installiert)
 if command -v ufw >/dev/null 2>&1; then
