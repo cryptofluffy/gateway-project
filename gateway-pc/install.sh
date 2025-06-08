@@ -24,6 +24,8 @@ apt install -y \
     python3 \
     python3-pip \
     python3-tk \
+    python3-venv \
+    python3-requests \
     isc-dhcp-server \
     iptables-persistent \
     bridge-utils \
@@ -31,9 +33,11 @@ apt install -y \
     curl \
     wget
 
-# Python-Abhängigkeiten installieren
-echo "🐍 Python-Abhängigkeiten werden installiert..."
-pip3 install requests
+# Python virtual environment erstellen
+echo "🐍 Python-Umgebung wird vorbereitet..."
+mkdir -p /opt/wireguard-gateway
+python3 -m venv /opt/wireguard-gateway/venv
+/opt/wireguard-gateway/venv/bin/pip install requests
 
 # Verzeichnisse erstellen
 echo "📁 Verzeichnisse werden erstellt..."
@@ -48,9 +52,19 @@ cp gui_app.py /opt/wireguard-gateway/
 chmod +x /opt/wireguard-gateway/gateway_manager.py
 chmod +x /opt/wireguard-gateway/gui_app.py
 
-# Symbolische Links erstellen
-ln -sf /opt/wireguard-gateway/gateway_manager.py /usr/local/bin/gateway-manager
-ln -sf /opt/wireguard-gateway/gui_app.py /usr/local/bin/gateway-gui
+# Wrapper-Skripte erstellen
+cat > /usr/local/bin/gateway-manager << 'EOF'
+#!/bin/bash
+/opt/wireguard-gateway/venv/bin/python /opt/wireguard-gateway/gateway_manager.py "$@"
+EOF
+
+cat > /usr/local/bin/gateway-gui << 'EOF'
+#!/bin/bash
+/opt/wireguard-gateway/venv/bin/python /opt/wireguard-gateway/gui_app.py "$@"
+EOF
+
+chmod +x /usr/local/bin/gateway-manager
+chmod +x /usr/local/bin/gateway-gui
 
 # Netzwerk-Konfiguration
 echo "🌐 Netzwerk wird konfiguriert..."
