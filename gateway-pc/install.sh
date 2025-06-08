@@ -92,6 +92,9 @@ network:
         - 10.0.0.1/24
 EOF
 
+# Netplan-Datei Berechtigungen korrigieren
+chmod 600 /etc/netplan/01-gateway-config.yaml
+
 # DHCP-Server für eth1 konfigurieren
 echo "🏠 DHCP-Server wird konfiguriert..."
 cat > /etc/dhcp/dhcpd.conf << 'EOF'
