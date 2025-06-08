@@ -94,6 +94,11 @@ class LandingI18nManager {
                     tech: {
                         title: 'Technologie'
                     }
+                },
+                general: {
+                    copy: 'Kopieren',
+                    copied: 'Kopiert!',
+                    copy_error: 'Fehler beim Kopieren'
                 }
             },
             en: {
@@ -183,6 +188,11 @@ class LandingI18nManager {
                     tech: {
                         title: 'Technology'
                     }
+                },
+                general: {
+                    copy: 'Copy',
+                    copied: 'Copied!',
+                    copy_error: 'Copy error'
                 }
             }
         };

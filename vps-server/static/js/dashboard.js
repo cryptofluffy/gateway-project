@@ -542,6 +542,10 @@ class DashboardManager {
                      document.querySelector(`button[onclick*="${elementId}"]`);
 
         try {
+            // Prüfe ob Clipboard API verfügbar ist (benötigt HTTPS)
+            if (!navigator.clipboard) {
+                throw new Error('Clipboard API nicht verfügbar');
+            }
             await navigator.clipboard.writeText(text);
             
             // Verbessertes visuelles Feedback
@@ -595,24 +599,89 @@ class DashboardManager {
             }, 2500);
 
         } catch (error) {
-            console.error('Clipboard error:', error);
-            this.showError(i18n ? i18n.translate('dashboard.copy_error') : 'Fehler beim Kopieren in die Zwischenablage');
+            console.warn('Moderne Clipboard API fehlgeschlagen, verwende Fallback:', error);
             
-            // Fallback für ältere Browser
+            // Fallback für HTTP oder ältere Browser
             try {
                 const textArea = document.createElement('textarea');
                 textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
                 document.body.appendChild(textArea);
+                textArea.focus();
                 textArea.select();
-                document.execCommand('copy');
+                
+                const successful = document.execCommand('copy');
                 document.body.removeChild(textArea);
                 
-                this.showNotification(
-                    i18n ? i18n.translate('dashboard.copied') : 'In Zwischenablage kopiert!', 
-                    'success'
-                );
+                if (successful) {
+                    // Gleiches visuelles Feedback wie bei moderner API
+                    const originalBg = element.style.backgroundColor;
+                    const originalColor = element.style.color;
+                    const originalText = element.innerHTML;
+                    const originalButtonText = button ? button.innerHTML : '';
+                    const originalButtonClass = button ? button.className : '';
+
+                    // Element-Feedback
+                    element.style.transition = 'all 0.3s ease';
+                    element.style.backgroundColor = '#10B981';
+                    element.style.color = 'white';
+                    element.style.padding = '4px';
+                    element.innerHTML = `✅ ${i18n ? i18n.translate('dashboard.copied') : 'Kopiert!'}`;
+
+                    // Button-Feedback
+                    if (button) {
+                        button.style.transition = 'all 0.3s ease';
+                        button.innerHTML = `✅ ${i18n ? i18n.translate('dashboard.copied') : 'Kopiert!'}`;
+                        button.className = button.className.replace(/bg-\w+-\d+/, 'bg-green-500').replace(/hover:bg-\w+-\d+/, 'hover:bg-green-600');
+                        button.disabled = true;
+                    }
+
+                    // Erfolgs-Animation
+                    element.style.transform = 'scale(1.05)';
+                    setTimeout(() => {
+                        element.style.transform = 'scale(1)';
+                    }, 200);
+
+                    this.showNotification(
+                        i18n ? i18n.translate('dashboard.copied') : 'In Zwischenablage kopiert!', 
+                        'success'
+                    );
+
+                    // Reset nach 2.5 Sekunden
+                    setTimeout(() => {
+                        element.style.backgroundColor = originalBg;
+                        element.style.color = originalColor;
+                        element.style.padding = '';
+                        element.style.transition = '';
+                        element.innerHTML = originalText;
+                        
+                        if (button) {
+                            button.innerHTML = originalButtonText;
+                            button.className = originalButtonClass;
+                            button.style.transition = '';
+                            button.disabled = false;
+                        }
+                    }, 2500);
+                } else {
+                    throw new Error('execCommand copy fehlgeschlagen');
+                }
             } catch (fallbackError) {
-                console.error('Fallback copy failed:', fallbackError);
+                console.error('Alle Copy-Methoden fehlgeschlagen:', fallbackError);
+                
+                // Zeige Text zum manuellen Kopieren
+                const userText = prompt(
+                    i18n ? i18n.translate('dashboard.manual_copy') : 'Kopieren fehlgeschlagen. Bitte manuell markieren und kopieren (Ctrl+C):',
+                    text
+                );
+                
+                if (userText !== null) {
+                    this.showNotification(
+                        i18n ? i18n.translate('dashboard.manual_copy_success') : 'Text zum Kopieren bereitgestellt', 
+                        'info'
+                    );
+                }
             }
         }
     }
