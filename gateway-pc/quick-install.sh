@@ -33,11 +33,15 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Repository klonen falls nicht vorhanden
+# Repository klonen oder aktualisieren
 if [ ! -d "/tmp/gateway-project" ]; then
     echo "📦 Repository wird geklont..."
     cd /tmp
     git clone https://github.com/cryptofluffy/gateway-project.git
+else
+    echo "📦 Repository wird aktualisiert..."
+    cd /tmp/gateway-project
+    git pull origin main
 fi
 
 cd /tmp/gateway-project/gateway-pc
