@@ -1,0 +1,38 @@
+[Unit]
+Description=Gateway Web Interface
+Documentation=https://github.com/your-repo/gateway-os
+After=gateway-manager.service
+Wants=gateway-manager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/share/gateway/web/app.py
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+Restart=on-failure
+RestartSec=3
+User=gateway-web
+Group=gateway-web
+
+# Working directory
+WorkingDirectory=/usr/share/gateway/web
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gateway /var/log/gateway
+CapabilityBoundingSet=
+
+# Resource limits
+LimitNOFILE=1024
+LimitNPROC=512
+
+# Environment
+Environment=FLASK_ENV=production
+Environment=GATEWAY_CONFIG_DIR=/etc/gateway
+Environment=GATEWAY_DATA_DIR=/var/lib/gateway
+
+[Install]
+WantedBy=multi-user.target

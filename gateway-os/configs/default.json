@@ -1,0 +1,154 @@
+{
+  "gateway_os": {
+    "version": "1.0.0",
+    "build_date": "2024-01-15",
+    "description": "Custom Linux distribution for VPN gateway appliances"
+  },
+  "hardware": {
+    "supported_platforms": [
+      "rpi3", "rpi4", "rpi5", "x86_64", "aarch64"
+    ],
+    "minimum_requirements": {
+      "ram_mb": 512,
+      "storage_gb": 4,
+      "network_interfaces": 1
+    },
+    "recommended_requirements": {
+      "ram_mb": 1024,
+      "storage_gb": 8,
+      "network_interfaces": 2
+    }
+  },
+  "network": {
+    "default_config": {
+      "lan_subnet": "192.168.100.0/24",
+      "lan_ip": "192.168.100.1",
+      "dhcp_range": {
+        "start": "192.168.100.10",
+        "end": "192.168.100.200"
+      },
+      "dns_servers": ["1.1.1.1", "8.8.8.8"],
+      "domain": "gateway.local"
+    },
+    "vpn": {
+      "wireguard": {
+        "port": 51820,
+        "subnet": "10.8.0.0/24",
+        "gateway_ip": "10.8.0.1",
+        "client_ip_start": "10.8.0.2"
+      }
+    }
+  },
+  "security": {
+    "default_ports": {
+      "ssh": 22,
+      "web_interface": 8080,
+      "wireguard": 51820
+    },
+    "firewall": {
+      "default_policy": "DROP",
+      "allowed_services": ["ssh", "dhcp", "dns", "web", "wireguard"],
+      "fail2ban_enabled": true
+    },
+    "users": {
+      "admin": {
+        "shell": "/bin/bash",
+        "groups": ["sudo", "gateway"],
+        "ssh_enabled": true
+      },
+      "gateway-web": {
+        "shell": "/bin/false",
+        "groups": ["gateway"],
+        "ssh_enabled": false
+      }
+    }
+  },
+  "services": {
+    "core": [
+      "gateway-manager",
+      "gateway-web",
+      "systemd-networkd",
+      "systemd-resolved",
+      "ssh"
+    ],
+    "optional": [
+      "fail2ban",
+      "chrony",
+      "gateway-update"
+    ],
+    "startup_order": [
+      "systemd-networkd",
+      "systemd-resolved", 
+      "gateway-firstboot",
+      "gateway-manager",
+      "gateway-web"
+    ]
+  },
+  "features": {
+    "zero_touch_setup": true,
+    "auto_update": true,
+    "web_management": true,
+    "vpn_gateway": true,
+    "dhcp_server": true,
+    "dns_forwarding": true,
+    "port_forwarding": true,
+    "firewall_management": true,
+    "monitoring": true
+  },
+  "build": {
+    "base_systems": {
+      "rpi": {
+        "base_image": "raspios-lite-arm64",
+        "bootloader": "raspberry-pi",
+        "kernel": "6.6-rpi"
+      },
+      "x86_64": {
+        "base_system": "debian-bookworm",
+        "bootloader": "grub2",
+        "kernel": "6.6-generic"
+      }
+    },
+    "packages": {
+      "system": [
+        "systemd",
+        "systemd-networkd",
+        "systemd-resolved",
+        "openssh-server",
+        "iptables-persistent",
+        "fail2ban",
+        "chrony"
+      ],
+      "network": [
+        "wireguard-tools",
+        "dnsmasq",
+        "hostapd",
+        "iproute2",
+        "iptables",
+        "bridge-utils"
+      ],
+      "utilities": [
+        "nano",
+        "htop",
+        "curl",
+        "wget",
+        "rsync",
+        "tcpdump",
+        "iperf3"
+      ],
+      "development": [
+        "python3",
+        "python3-pip",
+        "python3-flask",
+        "nginx"
+      ]
+    }
+  },
+  "update": {
+    "channels": ["stable", "beta", "dev"],
+    "default_channel": "stable",
+    "auto_update_enabled": true,
+    "update_schedule": "daily",
+    "update_time": "03:00",
+    "rollback_enabled": true
+  }
+}

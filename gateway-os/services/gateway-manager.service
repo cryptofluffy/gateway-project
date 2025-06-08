@@ -1,0 +1,36 @@
+[Unit]
+Description=Gateway Manager Service
+Documentation=https://github.com/your-repo/gateway-os
+After=network-online.target
+Wants=network-online.target
+Requires=systemd-networkd.service
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/gateway-manager
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+Restart=on-failure
+RestartSec=5
+User=root
+Group=root
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/wireguard /var/lib/gateway /var/log
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_MODULE
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Environment
+Environment=GATEWAY_CONFIG_DIR=/etc/gateway
+Environment=GATEWAY_DATA_DIR=/var/lib/gateway
+Environment=GATEWAY_LOG_LEVEL=info
+
+[Install]
+WantedBy=multi-user.target

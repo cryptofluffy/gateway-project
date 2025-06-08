@@ -1,0 +1,13 @@
+[Unit]
+Description=Gateway System Update Timer
+Documentation=https://github.com/your-repo/gateway-os
+Requires=gateway-update.service
+
+[Timer]
+# Check for updates daily at 3 AM
+OnCalendar=daily
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

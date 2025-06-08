@@ -1,0 +1,513 @@
+#!/usr/bin/env python3
+"""
+Gateway Manager - Core service for VPN gateway functionality
+Handles WireGuard configuration, network management, and device coordination
+"""
+
+import sys
+import os
+import time
+import signal
+import logging
+import json
+import subprocess
+import socket
+import threading
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+# Configuration
+CONFIG_DIR = Path(os.environ.get('GATEWAY_CONFIG_DIR', '/etc/gateway'))
+DATA_DIR = Path(os.environ.get('GATEWAY_DATA_DIR', '/var/lib/gateway'))
+LOG_LEVEL = os.environ.get('GATEWAY_LOG_LEVEL', 'info').upper()
+
+# Ensure directories exist
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Setup logging
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(DATA_DIR / 'gateway-manager.log')
+    ]
+)
+logger = logging.getLogger('gateway-manager')
+
+class NetworkManager:
+    """Manages network interfaces and routing"""
+    
+    def __init__(self):
+        self.wan_interface = None
+        self.lan_interface = None
+        self.vpn_interface = 'wg0'
+        
+    def detect_interfaces(self) -> Tuple[Optional[str], Optional[str]]:
+        """Auto-detect WAN and LAN interfaces"""
+        try:
+            # Get all network interfaces
+            result = subprocess.run(['ip', 'link', 'show'], 
+                                  capture_output=True, text=True, check=True)
+            
+            interfaces = []
+            for line in result.stdout.split('\n'):
+                if ': ' in line and not line.startswith(' '):
+                    iface = line.split(': ')[1].split('@')[0]
+                    if iface not in ['lo', 'wg0']:
+                        interfaces.append(iface)
+            
+            logger.info(f"Detected interfaces: {interfaces}")
+            
+            # Simple heuristic: first interface is WAN, second is LAN
+            wan = interfaces[0] if len(interfaces) > 0 else None
+            lan = interfaces[1] if len(interfaces) > 1 else None
+            
+            return wan, lan
+            
+        except Exception as e:
+            logger.error(f"Interface detection failed: {e}")
+            return None, None
+    
+    def configure_interfaces(self, wan: str, lan: str):
+        """Configure network interfaces"""
+        try:
+            self.wan_interface = wan
+            self.lan_interface = lan
+            
+            # Configure LAN interface with static IP
+            subprocess.run([
+                'ip', 'addr', 'add', '192.168.100.1/24', 'dev', lan
+            ], check=True)
+            
+            subprocess.run(['ip', 'link', 'set', lan, 'up'], check=True)
+            
+            # Ensure WAN interface is up (DHCP handled by systemd-networkd)
+            subprocess.run(['ip', 'link', 'set', wan, 'up'], check=True)
+            
+            logger.info(f"Configured interfaces - WAN: {wan}, LAN: {lan}")
+            
+        except Exception as e:
+            logger.error(f"Interface configuration failed: {e}")
+    
+    def setup_nat(self):
+        """Setup NAT and firewall rules"""
+        try:
+            # Enable IP forwarding
+            subprocess.run(['sysctl', '-w', 'net.ipv4.ip_forward=1'], check=True)
+            
+            # Clear existing rules
+            subprocess.run(['iptables', '-t', 'nat', '-F'], check=True)
+            subprocess.run(['iptables', '-F'], check=True)
+            
+            # Setup NAT for LAN to WAN
+            if self.wan_interface and self.lan_interface:
+                subprocess.run([
+                    'iptables', '-t', 'nat', '-A', 'POSTROUTING',
+                    '-s', '192.168.100.0/24',
+                    '-o', self.wan_interface,
+                    '-j', 'MASQUERADE'
+                ], check=True)
+                
+                # Allow forwarding
+                subprocess.run([
+                    'iptables', '-A', 'FORWARD',
+                    '-i', self.lan_interface,
+                    '-o', self.wan_interface,
+                    '-j', 'ACCEPT'
+                ], check=True)
+                
+                subprocess.run([
+                    'iptables', '-A', 'FORWARD',
+                    '-i', self.wan_interface,
+                    '-o', self.lan_interface,
+                    '-m', 'conntrack', '--ctstate', 'RELATED,ESTABLISHED',
+                    '-j', 'ACCEPT'
+                ], check=True)
+            
+            # Setup NAT for VPN traffic
+            subprocess.run([
+                'iptables', '-t', 'nat', '-A', 'POSTROUTING',
+                '-s', '10.8.0.0/24',
+                '-o', self.wan_interface,
+                '-j', 'MASQUERADE'
+            ], check=True)
+            
+            logger.info("NAT and firewall rules configured")
+            
+        except Exception as e:
+            logger.error(f"NAT setup failed: {e}")
+
+class WireGuardManager:
+    """Manages WireGuard VPN configuration"""
+    
+    def __init__(self):
+        self.config_file = Path('/etc/wireguard/wg0.conf')
+        self.private_key_file = Path('/etc/wireguard/private.key')
+        self.public_key_file = Path('/etc/wireguard/public.key')
+        
+    def generate_keys(self) -> Tuple[str, str]:
+        """Generate WireGuard key pair"""
+        try:
+            # Generate private key
+            result = subprocess.run(['wg', 'genkey'], 
+                                  capture_output=True, text=True, check=True)
+            private_key = result.stdout.strip()
+            
+            # Generate public key from private key
+            result = subprocess.run(['wg', 'pubkey'], 
+                                  input=private_key, 
+                                  capture_output=True, text=True, check=True)
+            public_key = result.stdout.strip()
+            
+            return private_key, public_key
+            
+        except Exception as e:
+            logger.error(f"Key generation failed: {e}")
+            raise
+    
+    def save_keys(self, private_key: str, public_key: str):
+        """Save keys to files"""
+        try:
+            self.private_key_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Save private key with restricted permissions
+            self.private_key_file.write_text(private_key)
+            self.private_key_file.chmod(0o600)
+            
+            # Save public key
+            self.public_key_file.write_text(public_key)
+            self.public_key_file.chmod(0o644)
+            
+            logger.info("WireGuard keys saved")
+            
+        except Exception as e:
+            logger.error(f"Key saving failed: {e}")
+            raise
+    
+    def create_config(self, vps_ip: str, vps_public_key: str):
+        """Create WireGuard configuration"""
+        try:
+            if not self.private_key_file.exists():
+                private_key, public_key = self.generate_keys()
+                self.save_keys(private_key, public_key)
+            else:
+                private_key = self.private_key_file.read_text().strip()
+            
+            config_content = f"""[Interface]
+PrivateKey = {private_key}
+Address = 10.8.0.2/24
+DNS = 1.1.1.1, 8.8.8.8
+
+[Peer]
+PublicKey = {vps_public_key}
+Endpoint = {vps_ip}:51820
+AllowedIPs = 0.0.0.0/0, 10.0.0.0/8
+PersistentKeepalive = 25
+"""
+            
+            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+            self.config_file.write_text(config_content)
+            self.config_file.chmod(0o600)
+            
+            logger.info(f"WireGuard config created for VPS {vps_ip}")
+            
+        except Exception as e:
+            logger.error(f"Config creation failed: {e}")
+            raise
+    
+    def start_interface(self):
+        """Start WireGuard interface"""
+        try:
+            subprocess.run(['wg-quick', 'up', 'wg0'], check=True)
+            logger.info("WireGuard interface started")
+            
+        except Exception as e:
+            logger.error(f"WireGuard start failed: {e}")
+    
+    def stop_interface(self):
+        """Stop WireGuard interface"""
+        try:
+            subprocess.run(['wg-quick', 'down', 'wg0'], check=False)
+            logger.info("WireGuard interface stopped")
+            
+        except Exception as e:
+            logger.error(f"WireGuard stop failed: {e}")
+    
+    def get_status(self) -> Dict:
+        """Get WireGuard status"""
+        try:
+            result = subprocess.run(['wg', 'show', 'wg0'], 
+                                  capture_output=True, text=True, check=True)
+            
+            return {
+                'status': 'active',
+                'output': result.stdout,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+        except subprocess.CalledProcessError:
+            return {
+                'status': 'inactive',
+                'output': 'WireGuard interface not active',
+                'timestamp': datetime.now().isoformat()
+            }
+
+class DHCPManager:
+    """Manages DHCP server for LAN clients"""
+    
+    def __init__(self):
+        self.config_file = Path('/etc/dhcp/dhcpd.conf')
+        self.leases_file = Path('/var/lib/dhcp/dhcpd.leases')
+    
+    def create_config(self, interface: str):
+        """Create DHCP configuration"""
+        try:
+            config_content = f"""# Gateway DHCP Configuration
+default-lease-time 600;
+max-lease-time 7200;
+authoritative;
+
+subnet 192.168.100.0 netmask 255.255.255.0 {{
+    range 192.168.100.10 192.168.100.200;
+    option routers 192.168.100.1;
+    option domain-name-servers 1.1.1.1, 8.8.8.8;
+    option domain-name "gateway.local";
+    option broadcast-address 192.168.100.255;
+}}
+
+# Static leases for known devices
+# host device1 {{
+#     hardware ethernet aa:bb:cc:dd:ee:ff;
+#     fixed-address 192.168.100.100;
+# }}
+"""
+            
+            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+            self.config_file.write_text(config_content)
+            
+            # Ensure leases file exists
+            self.leases_file.parent.mkdir(parents=True, exist_ok=True)
+            if not self.leases_file.exists():
+                self.leases_file.touch()
+            
+            logger.info("DHCP configuration created")
+            
+        except Exception as e:
+            logger.error(f"DHCP config creation failed: {e}")
+    
+    def start_server(self, interface: str):
+        """Start DHCP server"""
+        try:
+            subprocess.run(['systemctl', 'enable', 'dhcpd'], check=True)
+            subprocess.run(['systemctl', 'start', 'dhcpd'], check=True)
+            logger.info("DHCP server started")
+            
+        except Exception as e:
+            logger.error(f"DHCP server start failed: {e}")
+
+class GatewayManager:
+    """Main gateway management service"""
+    
+    def __init__(self):
+        self.network_mgr = NetworkManager()
+        self.wg_mgr = WireGuardManager()
+        self.dhcp_mgr = DHCPManager()
+        self.running = True
+        self.status_interval = 30
+        
+    def setup_signal_handlers(self):
+        """Setup signal handlers for graceful shutdown"""
+        signal.signal(signal.SIGTERM, self.signal_handler)
+        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGHUP, self.reload_config)
+    
+    def signal_handler(self, signum, frame):
+        """Handle shutdown signals"""
+        logger.info(f"Received signal {signum}, shutting down...")
+        self.running = False
+    
+    def reload_config(self, signum, frame):
+        """Handle config reload signal"""
+        logger.info("Reloading configuration...")
+        self.load_config()
+    
+    def load_config(self):
+        """Load gateway configuration"""
+        try:
+            config_file = CONFIG_DIR / 'gateway.json'
+            if config_file.exists():
+                with open(config_file) as f:
+                    config = json.load(f)
+                    
+                logger.info("Configuration loaded")
+                return config
+            else:
+                logger.info("No configuration file found, using defaults")
+                return {}
+                
+        except Exception as e:
+            logger.error(f"Config loading failed: {e}")
+            return {}
+    
+    def save_status(self, status: Dict):
+        """Save current status to file"""
+        try:
+            status_file = DATA_DIR / 'status.json'
+            with open(status_file, 'w') as f:
+                json.dump(status, f, indent=2)
+                
+        except Exception as e:
+            logger.error(f"Status saving failed: {e}")
+    
+    def initialize(self):
+        """Initialize gateway services"""
+        logger.info("Initializing Gateway Manager...")
+        
+        try:
+            # Load configuration
+            config = self.load_config()
+            
+            # Auto-detect network interfaces
+            wan, lan = self.network_mgr.detect_interfaces()
+            if wan and lan:
+                # Configure network
+                self.network_mgr.configure_interfaces(wan, lan)
+                self.network_mgr.setup_nat()
+                
+                # Setup DHCP
+                self.dhcp_mgr.create_config(lan)
+                self.dhcp_mgr.start_server(lan)
+                
+                # Configure VPN if settings available
+                vps_ip = config.get('vps_ip')
+                vps_public_key = config.get('vps_public_key')
+                
+                if vps_ip and vps_public_key:
+                    self.wg_mgr.create_config(vps_ip, vps_public_key)
+                    self.wg_mgr.start_interface()
+                else:
+                    logger.warning("VPS configuration not found, VPN not started")
+                
+                logger.info("Gateway initialization complete")
+                return True
+            else:
+                logger.error("Failed to detect network interfaces")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Initialization failed: {e}")
+            return False
+    
+    def status_loop(self):
+        """Main status monitoring loop"""
+        while self.running:
+            try:
+                # Collect status information
+                status = {
+                    'timestamp': datetime.now().isoformat(),
+                    'network': {
+                        'wan_interface': self.network_mgr.wan_interface,
+                        'lan_interface': self.network_mgr.lan_interface,
+                    },
+                    'wireguard': self.wg_mgr.get_status(),
+                    'system': {
+                        'uptime': self.get_uptime(),
+                        'load': self.get_load_average(),
+                        'memory': self.get_memory_usage(),
+                    }
+                }
+                
+                # Save status
+                self.save_status(status)
+                
+                # Sleep until next check
+                time.sleep(self.status_interval)
+                
+            except Exception as e:
+                logger.error(f"Status loop error: {e}")
+                time.sleep(5)
+    
+    def get_uptime(self) -> str:
+        """Get system uptime"""
+        try:
+            with open('/proc/uptime') as f:
+                uptime_seconds = float(f.read().split()[0])
+                hours = int(uptime_seconds // 3600)
+                minutes = int((uptime_seconds % 3600) // 60)
+                return f"{hours:02d}:{minutes:02d}"
+        except:
+            return "unknown"
+    
+    def get_load_average(self) -> List[float]:
+        """Get system load average"""
+        try:
+            return list(os.getloadavg())
+        except:
+            return [0.0, 0.0, 0.0]
+    
+    def get_memory_usage(self) -> Dict:
+        """Get memory usage information"""
+        try:
+            with open('/proc/meminfo') as f:
+                meminfo = {}
+                for line in f:
+                    key, value = line.split(':')
+                    meminfo[key.strip()] = int(value.split()[0])
+                
+                total = meminfo['MemTotal']
+                available = meminfo['MemAvailable']
+                used = total - available
+                
+                return {
+                    'total_kb': total,
+                    'used_kb': used,
+                    'available_kb': available,
+                    'usage_percent': round((used / total) * 100, 1)
+                }
+        except:
+            return {'total_kb': 0, 'used_kb': 0, 'available_kb': 0, 'usage_percent': 0}
+    
+    def run(self):
+        """Main service loop"""
+        logger.info("Starting Gateway Manager")
+        
+        # Setup signal handlers
+        self.setup_signal_handlers()
+        
+        # Initialize services
+        if not self.initialize():
+            logger.error("Initialization failed, exiting")
+            sys.exit(1)
+        
+        # Notify systemd we're ready
+        try:
+            import systemd.daemon
+            systemd.daemon.notify('READY=1')
+        except ImportError:
+            pass
+        
+        # Start status monitoring in background
+        status_thread = threading.Thread(target=self.status_loop, daemon=True)
+        status_thread.start()
+        
+        # Main loop
+        try:
+            while self.running:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Received keyboard interrupt")
+        
+        # Cleanup
+        logger.info("Shutting down Gateway Manager")
+        self.wg_mgr.stop_interface()
+
+def main():
+    """Main entry point"""
+    manager = GatewayManager()
+    manager.run()
+
+if __name__ == '__main__':
+    main()

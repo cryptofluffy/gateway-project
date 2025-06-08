@@ -1,0 +1,99 @@
+# Gateway OS - Raspberry Pi Boot Configuration
+# Optimized for VPN gateway functionality
+
+# GPU memory split (minimal for headless operation)
+gpu_mem=16
+
+# Enable UART for debugging
+enable_uart=1
+
+# Disable unnecessary features for headless operation
+start_x=0
+start_debug=0
+
+# CPU/GPU configuration for Pi 4
+arm_64bit=1
+arm_boost=1
+
+# USB configuration
+max_usb_current=1
+usb_max_current_enable=1
+
+# Network performance optimizations
+# Enable hardware flow control
+enable_uart=1
+dtparam=uart0=on
+
+# I2C and SPI (disabled by default)
+dtparam=i2c_arm=off
+dtparam=spi=off
+
+# Audio (disabled for headless)
+dtparam=audio=off
+
+# Camera (disabled)
+start_x=0
+gpu_mem=16
+
+# Overclock settings (conservative for reliability)
+arm_freq=1500
+gpu_freq=500
+core_freq=500
+sdram_freq=500
+over_voltage=0
+
+# Temperature limits
+temp_limit=85
+
+# Network interface configuration
+dtoverlay=dwc2,dr_mode=host
+
+# Additional GPIO configurations for network hardware
+# Enable additional USB ports
+dtoverlay=dwc2
+
+# Disable WiFi and Bluetooth power management (for stability)
+dtoverlay=disable-wifi-power-management
+
+# Ethernet LED configuration
+dtparam=eth_led0=14
+dtparam=eth_led1=15
+
+# Boot optimization
+disable_splash=1
+boot_delay=0
+
+# Security: Disable unnecessary interfaces
+camera_auto_detect=0
+display_auto_detect=0
+
+# Power management
+# Enable efficient power modes
+dtoverlay=pi3-miniuart-bt
+
+# Memory configuration
+# Disable GPU memory mapping
+disable_fw_kms_setup=1
+
+# Custom device tree overlays for network optimization
+# dtoverlay=enc28j60  # For additional Ethernet if needed
+# dtoverlay=w1-gpio   # For temperature sensors
+
+# Conditional configurations based on Pi model
+[pi4]
+# Pi 4 specific optimizations
+arm_64bit=1
+dtoverlay=vc4-kms-v3d
+max_framebuffers=2
+
+[all]
+# Configuration for all models
+# Enable hardware random number generator
+dtoverlay=rng-rng
+
+# Watchdog timer for system reliability
+dtparam=watchdog=on
+
+# Custom overlays for gateway functionality
+dtoverlay=gateway-leds
+dtoverlay=gateway-gpio

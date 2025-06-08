@@ -1,0 +1,28 @@
+[Unit]
+Description=Gateway System Updates
+Documentation=https://github.com/your-repo/gateway-os
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/gateway-update
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=false
+ProtectHome=true
+ReadWritePaths=/etc /usr /var
+
+# Resource limits
+LimitNOFILE=1024
+LimitNPROC=512
+
+# Environment
+Environment=GATEWAY_UPDATE_URL=https://updates.gateway-os.com
+Environment=GATEWAY_UPDATE_CHANNEL=stable
