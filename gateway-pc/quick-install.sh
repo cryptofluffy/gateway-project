@@ -70,13 +70,13 @@ echo ""
 echo "⚙️ Gateway wird automatisch konfiguriert..."
 
 # Gateway konfigurieren
-./gateway_manager.py setup "$VPS_IP" "$VPS_PUBLIC_KEY"
+/usr/local/bin/gateway-manager setup "$VPS_IP" "$VPS_PUBLIC_KEY"
 
 if [ $? -eq 0 ]; then
     echo "✅ Gateway erfolgreich konfiguriert!"
     
     echo "🚀 Gateway wird gestartet..."
-    ./gateway_manager.py start
+    /usr/local/bin/gateway-manager start
     
     if [ $? -eq 0 ]; then
         echo "✅ Gateway erfolgreich gestartet!"
