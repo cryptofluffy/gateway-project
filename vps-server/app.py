@@ -766,7 +766,7 @@ def api_status():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/clients', methods=['GET', 'POST', 'PUT', 'DELETE'])
-@limiter.limit("10 per minute")
+@limiter.limit("20 per minute")
 def api_clients():
     """API: Client-Management"""
     try:
@@ -775,18 +775,37 @@ def api_clients():
             return jsonify(clients)
         
         elif request.method == 'POST':
-            data = request.get_json()
-            if not data:
-                return jsonify({'success': False, 'message': 'Keine Daten erhalten'}), 400
-            
-            name = data.get('name', '').strip()
-            location = data.get('location', '').strip()
-            public_key = data.get('public_key', '').strip()
-            network_config = data.get('network_config', {})
-            
-            success, message = client_manager.add_client(name, location, public_key, network_config)
-            status_code = 200 if success else 400
-            return jsonify({'success': success, 'message': message}), status_code
+            try:
+                data = request.get_json()
+                logger.info(f"Received POST request with data: {data}")
+                
+                if not data:
+                    logger.warning("No JSON data received in POST request")
+                    return jsonify({'success': False, 'message': 'Keine Daten erhalten'}), 400
+                
+                name = data.get('name', '').strip()
+                location = data.get('location', '').strip()
+                public_key = data.get('public_key', '').strip()
+                network_config = data.get('network_config', {})
+                
+                logger.info(f"Processing client addition: name='{name}', location='{location}', public_key_length={len(public_key)}")
+                
+                # Zusätzliche Validierung
+                if not name:
+                    return jsonify({'success': False, 'message': 'Gateway-Name ist erforderlich'}), 400
+                
+                if not public_key:
+                    return jsonify({'success': False, 'message': 'WireGuard Public Key ist erforderlich'}), 400
+                
+                success, message = client_manager.add_client(name, location, public_key, network_config)
+                status_code = 200 if success else 400
+                
+                logger.info(f"Client addition result: success={success}, message='{message}'")
+                return jsonify({'success': success, 'message': message}), status_code
+                
+            except Exception as e:
+                logger.error(f"Exception in POST /api/clients: {e}", exc_info=True)
+                return jsonify({'success': False, 'message': f'Server-Fehler: {str(e)}'}), 500
         
         elif request.method == 'PUT':
             data = request.get_json()

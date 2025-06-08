@@ -73,23 +73,19 @@ echo "🌐 Netzwerk wird konfiguriert..."
 echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 sysctl -p
 
-# Netzwerk-Interfaces konfigurieren
+# Netzwerk-Interface eth1 für Server-Netzwerk konfigurieren (eth0 bleibt DHCP)
 cat > /etc/netplan/01-gateway-config.yaml << 'EOF'
 network:
   version: 2
   renderer: networkd
   ethernets:
     eth0:
-      dhcp4: false
-      addresses:
-        - 192.168.1.254/24
-      routes:
-        - to: 192.168.1.0/24
-          via: 192.168.1.1
+      dhcp4: true
     eth1:
       dhcp4: false
       addresses:
         - 10.0.0.1/24
+      optional: true
 EOF
 
 # Netplan-Datei Berechtigungen korrigieren
