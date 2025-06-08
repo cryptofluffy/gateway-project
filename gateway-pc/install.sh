@@ -73,42 +73,18 @@ echo "🌐 Netzwerk wird konfiguriert..."
 echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 sysctl -p
 
-# Netzwerk-Interface eth1 für Server-Netzwerk konfigurieren (eth0 bleibt DHCP)
-cat > /etc/netplan/01-gateway-config.yaml << 'EOF'
-network:
-  version: 2
-  renderer: networkd
-  ethernets:
-    eth0:
-      dhcp4: true
-    eth1:
-      dhcp4: false
-      addresses:
-        - 10.0.0.1/24
-      optional: true
-EOF
+# Netzwerk-Konfiguration wird über das Dashboard verwaltet
+echo "🌐 Netzwerk-Konfiguration wird vorbereitet (über Dashboard konfigurierbar)..."
 
-# Netplan-Datei Berechtigungen korrigieren
-chmod 600 /etc/netplan/01-gateway-config.yaml
+# Backup der originalen Netplan-Konfiguration falls vorhanden
+if [ -f "/etc/netplan/50-cloud-init.yaml" ]; then
+    cp /etc/netplan/50-cloud-init.yaml /etc/netplan/50-cloud-init.yaml.backup
+fi
 
-# DHCP-Server für eth1 konfigurieren
-echo "🏠 DHCP-Server wird konfiguriert..."
-cat > /etc/dhcp/dhcpd.conf << 'EOF'
-# DHCP-Konfiguration für Gateway eth1 (Server-Netz)
-default-lease-time 600;
-max-lease-time 7200;
-authoritative;
-
-subnet 10.0.0.0 netmask 255.255.255.0 {
-    range 10.0.0.100 10.0.0.200;
-    option routers 10.0.0.1;
-    option domain-name-servers 8.8.8.8, 8.8.4.4;
-    option domain-name "gateway.local";
-}
-EOF
-
-# DHCP-Server Interface konfigurieren
-echo 'INTERFACESv4="eth1"' > /etc/default/isc-dhcp-server
+# DHCP-Server deaktiviert (wird über Dashboard aktiviert)
+echo "🏠 DHCP-Server wird vorbereitet (über Dashboard aktivierbar)..."
+systemctl disable isc-dhcp-server 2>/dev/null || true
+systemctl stop isc-dhcp-server 2>/dev/null || true
 
 # WireGuard Systemd-Template erstellen
 echo "🔄 WireGuard-Service wird konfiguriert..."
@@ -191,16 +167,11 @@ iptables-save > /etc/iptables/rules.v4
 # Services aktivieren
 echo "🔄 Services werden aktiviert..."
 systemctl daemon-reload
-systemctl enable isc-dhcp-server
 systemctl enable wireguard-gateway
 systemctl enable gateway-monitor
 
-# Netzwerk-Konfiguration anwenden
-echo "🌐 Netzwerk-Konfiguration wird angewendet..."
-netplan apply
-
-# DHCP-Server starten
-systemctl start isc-dhcp-server
+# Netzwerk-Konfiguration bleibt unverändert (über Dashboard konfigurierbar)
+echo "🌐 Bestehende Netzwerk-Konfiguration beibehalten..."
 
 echo ""
 echo "✅ Installation abgeschlossen!"
@@ -261,8 +232,15 @@ echo "Logs:          /var/log/wireguard-gateway/"
 echo ""
 echo "🖥️ Netzwerk-Konfiguration:"
 echo "=========================="
-echo "Port A (eth0): 192.168.1.254/24 (Heimnetzwerk)"
-echo "Port B (eth1): 10.0.0.1/24      (Server-Netzwerk)"
-echo "WireGuard:     10.8.0.2/24      (Tunnel zum VPS)"
+echo "Aktuelle Konfiguration: Unverändert (DHCP/bestehend)"
+echo "WireGuard-Tunnel:        Bereit für VPS-Verbindung"
+echo "Gateway-Dashboard:       Für Netzwerk-Setup verwenden"
 echo ""
-echo "⚠️  WICHTIG: Reboot erforderlich für vollständige Netzwerk-Konfiguration!"
+echo "📋 NÄCHSTE SCHRITTE:"
+echo "==================="
+echo "1. Gateway mit VPS verbinden (automatisch)"
+echo "2. Dashboard öffnen: gateway-gui"
+echo "3. Netzwerkschnittstellen über Dashboard konfigurieren"
+echo "4. Port-Weiterleitungen einrichten"
+echo ""
+echo "⚠️  HINWEIS: Netzwerk-Setup erfolgt über das Dashboard!"

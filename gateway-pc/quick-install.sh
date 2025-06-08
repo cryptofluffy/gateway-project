@@ -131,10 +131,12 @@ if [ $? -eq 0 ]; then
             echo ""
         fi
         
-        echo "🔄 System wird in 10 Sekunden neu gestartet..."
-        echo "   (Drücke Ctrl+C zum Abbrechen)"
-        sleep 10
-        reboot
+        echo "✅ Installation abgeschlossen!"
+        echo ""
+        echo "📱 Gateway-Dashboard starten:"
+        echo "   gateway-gui"
+        echo ""
+        echo "⚠️  Kein Reboot erforderlich - Netzwerk bleibt unverändert"
         
     else
         echo "❌ Fehler beim Starten des Gateways"
