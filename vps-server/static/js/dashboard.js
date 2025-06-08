@@ -420,22 +420,22 @@ class DashboardManager {
         const lanValue = lanSelect.value;
         
         // Standard-Optionen beibehalten und erweitern
-        const addInterfaceOption = (select, interface, category) => {
+        const addInterfaceOption = (select, iface, category) => {
             const option = document.createElement('option');
-            option.value = interface.name;
+            option.value = iface.name;
             
             let icon = '🔌';
             if (category === 'ethernet') icon = '🌐';
             if (category === 'wireless') icon = '📡';
             if (category === 'virtual') icon = '🔗';
             
-            let status = interface.status === 'up' ? '✅' : '⚠️';
-            let ip = interface.ip ? ` (${interface.ip})` : '';
+            let status = iface.status === 'up' ? '✅' : '⚠️';
+            let ip = iface.ip ? ` (${iface.ip})` : '';
             
-            option.textContent = `${icon} ${interface.name}${ip} ${status}`;
+            option.textContent = `${icon} ${iface.name}${ip} ${status}`;
             
             // Nur hinzufügen wenn noch nicht vorhanden
-            const exists = Array.from(select.options).some(opt => opt.value === interface.name);
+            const exists = Array.from(select.options).some(opt => opt.value === iface.name);
             if (!exists) {
                 select.appendChild(option);
             }
@@ -443,9 +443,9 @@ class DashboardManager {
         
         // Interfaces zu beiden Dropdowns hinzufügen
         Object.entries(interfaces).forEach(([category, interfaceList]) => {
-            interfaceList.forEach(interface => {
-                addInterfaceOption(wanSelect, interface, category);
-                addInterfaceOption(lanSelect, interface, category);
+            interfaceList.forEach(iface => {
+                addInterfaceOption(wanSelect, iface, category);
+                addInterfaceOption(lanSelect, iface, category);
             });
         });
         
@@ -505,7 +505,7 @@ class DashboardManager {
             // Update Tunnel-Status
             const tunnelStatus = document.getElementById('tunnel-status');
             if (tunnelStatus) {
-                const isActive = data.interface.status === 'active';
+                const isActive = data.iface ? data.iface.status === 'active' : data.interface && data.interface.status === 'active';
                 tunnelStatus.className = `inline-block w-4 h-4 ${isActive ? 'bg-green-500' : 'bg-red-500'} rounded-full`;
             }
 
@@ -992,9 +992,9 @@ class DashboardManager {
             const lanSelect = modal.querySelector('select[name="edit_lan_interface"]');
             
             Object.entries(this.lastLoadedInterfaces).forEach(([category, interfaceList]) => {
-                interfaceList.forEach(interface => {
-                    this.addInterfaceOptionToSelect(wanSelect, interface, category);
-                    this.addInterfaceOptionToSelect(lanSelect, interface, category);
+                interfaceList.forEach(iface => {
+                    this.addInterfaceOptionToSelect(wanSelect, iface, category);
+                    this.addInterfaceOptionToSelect(lanSelect, iface, category);
                 });
             });
         }
@@ -1003,22 +1003,22 @@ class DashboardManager {
     /**
      * Interface-Option zu Select hinzufügen
      */
-    addInterfaceOptionToSelect(select, interface, category) {
+    addInterfaceOptionToSelect(select, iface, category) {
         const option = document.createElement('option');
-        option.value = interface.name;
+        option.value = iface.name;
         
         let icon = '🔌';
         if (category === 'ethernet') icon = '🌐';
         if (category === 'wireless') icon = '📡';
         if (category === 'virtual') icon = '🔗';
         
-        let status = interface.status === 'up' ? '✅' : '⚠️';
-        let ip = interface.ip ? ` (${interface.ip})` : '';
+        let status = iface.status === 'up' ? '✅' : '⚠️';
+        let ip = iface.ip ? ` (${iface.ip})` : '';
         
-        option.textContent = `${icon} ${interface.name}${ip} ${status}`;
+        option.textContent = `${icon} ${iface.name}${ip} ${status}`;
         
         // Nur hinzufügen wenn noch nicht vorhanden
-        const exists = Array.from(select.options).some(opt => opt.value === interface.name);
+        const exists = Array.from(select.options).some(opt => opt.value === iface.name);
         if (!exists) {
             select.appendChild(option);
         }
