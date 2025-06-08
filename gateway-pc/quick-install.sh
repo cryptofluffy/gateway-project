@@ -41,10 +41,26 @@ if [ ! -d "/tmp/gateway-project" ]; then
 else
     echo "📦 Repository wird aktualisiert..."
     cd /tmp/gateway-project
-    git pull origin main
+    
+    # Versuche git pull, bei Fehlern Repository neu klonen
+    if ! git pull origin main 2>/dev/null; then
+        echo "⚠️ Git pull fehlgeschlagen, Repository wird neu geklont..."
+        cd /tmp
+        rm -rf gateway-project
+        git clone https://github.com/cryptofluffy/gateway-project.git
+    fi
 fi
 
 cd /tmp/gateway-project/gateway-pc
+
+# Prüfe ob install.sh die neueste Version mit Python venv fix hat
+if ! grep -q "python3-venv" install.sh; then
+    echo "⚠️ Veraltete install.sh erkannt, Repository wird aktualisiert..."
+    cd /tmp
+    rm -rf gateway-project
+    git clone https://github.com/cryptofluffy/gateway-project.git
+    cd /tmp/gateway-project/gateway-pc
+fi
 
 echo "🔧 Gateway-PC wird installiert..."
 chmod +x install.sh
