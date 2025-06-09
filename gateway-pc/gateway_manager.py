@@ -13,6 +13,7 @@ import threading
 import requests
 from datetime import datetime
 import configparser
+from urllib.parse import urlparse
 
 class WireGuardGateway:
     def __init__(self):
@@ -25,6 +26,22 @@ class WireGuardGateway:
         self.is_connected = False
         self.load_config()
     
+    def normalize_url(self, url):
+        """Normalisiert URL durch Hinzufügen von http:// wenn kein Schema vorhanden ist"""
+        if not url:
+            return url
+        
+        # Entferne führende/nachfolgende Leerzeichen
+        url = url.strip()
+        
+        # Prüfe ob bereits ein Schema vorhanden ist
+        parsed = urlparse(url)
+        if not parsed.scheme:
+            # Kein Schema vorhanden, füge http:// hinzu
+            url = f"http://{url}"
+        
+        return url
+    
     def load_config(self):
         """Lade Gateway-Konfiguration"""
         try:
@@ -34,13 +51,15 @@ class WireGuardGateway:
                     self.vps_endpoint = config.get('vps_endpoint')
                     self.vps_public_key = config.get('vps_public_key')
                     # VPS API-Endpunkt für automatische Key-Updates
-                    self.vps_api_url = config.get('vps_api_url')
+                    self.vps_api_url = self.normalize_url(config.get('vps_api_url'))
         except Exception as e:
             print(f"Fehler beim Laden der Konfiguration: {e}")
     
     def fetch_vps_public_key(self, vps_api_url):
         """Hole aktuellen VPS Public Key vom VPS Dashboard API"""
         try:
+            # URL normalisieren
+            vps_api_url = self.normalize_url(vps_api_url)
             print("🔄 Hole aktuellen VPS Public Key vom Dashboard...")
             
             # API-Endpunkt aufrufen
@@ -144,26 +163,27 @@ class WireGuardGateway:
     
     def setup_initial_config(self, vps_api_url, vps_public_key=None):
         """Initiale Konfiguration des Gateways mit automatischem VPS Key Abruf"""
-        self.vps_api_url = vps_api_url
+        # URL normalisieren
+        self.vps_api_url = self.normalize_url(vps_api_url)
         
         # Versuche VPS Public Key automatisch abzurufen
         if not vps_public_key:
             print("🔄 Kein VPS Public Key angegeben - versuche automatischen Abruf...")
-            vps_info = self.fetch_vps_public_key(vps_api_url)
+            vps_info = self.fetch_vps_public_key(self.vps_api_url)
             if vps_info:
                 self.vps_public_key = vps_info['public_key']
-                self.vps_endpoint = vps_info.get('endpoint', f"{vps_api_url.split('://')[1].split(':')[0]}:51820")
+                self.vps_endpoint = vps_info.get('endpoint', f"{self.vps_api_url.split('://')[1].split(':')[0]}:51820")
             else:
                 print("❌ Automatischer VPS Public Key Abruf fehlgeschlagen")
                 print("💡 Verwenden Sie das manuelle Setup mit:")
-                print(f"   python3 gateway_manager.py setup {vps_api_url} <VPS_PUBLIC_KEY>")
+                print(f"   python3 gateway_manager.py setup {self.vps_api_url} <VPS_PUBLIC_KEY>")
                 print("   (VPS Public Key aus dem VPS Dashboard kopieren)")
                 return False
         else:
             # Manuell übergebener Key (Fallback für alte Setup-Methode)
             self.vps_public_key = vps_public_key
             # Bestimme Endpoint aus API URL
-            api_host = vps_api_url.split('://')[1].split(':')[0]
+            api_host = self.vps_api_url.split('://')[1].split(':')[0]
             self.vps_endpoint = f"{api_host}:51820"
         
         if not self.generate_keys():
@@ -501,8 +521,11 @@ if __name__ == "__main__":
             vps_api_url = sys.argv[2]
             vps_public_key = sys.argv[3] if len(sys.argv) > 3 else None
             
+            # URL normalisieren für Anzeige
+            normalized_url = gateway.normalize_url(vps_api_url)
+            
             print("🔧 Gateway wird konfiguriert...")
-            print(f"📡 VPS Dashboard API: {vps_api_url}")
+            print(f"📡 VPS Dashboard API: {normalized_url}")
             
             if gateway.setup_initial_config(vps_api_url, vps_public_key):
                 print("✅ Gateway-Konfiguration erstellt")
