@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """
-WireGuard Gateway VPS Server - Optimierte Version
-Hauptanwendung mit Web-Interface und API für das Management
+WireGuard Gateway VPS Server - Optimierte Version mit Monitoring
+Hauptanwendung mit Web-Interface, API und Real-Time Monitoring
 """
 
 import logging
 import os
 import time
+import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from flask import Flask, render_template, request, jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_socketio import SocketIO, emit
 
 # Lokale Imports
 from config import config
+from monitoring import system_monitor, alert_manager, get_system_health
 from utils import (
     CommandExecutor, InputValidator, NetworkUtils, FileManager,
     ValidationError, rate_limit
@@ -34,7 +37,10 @@ logger = logging.getLogger(__name__)
 
 # Flask App Setup
 app = Flask(__name__)
-app.secret_key = config.SECRET_KEY
+app.config.update(config.get_flask_config())
+
+# SocketIO für Real-Time Monitoring
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Rate Limiting
 limiter = Limiter(
@@ -919,6 +925,84 @@ def api_vps_info():
         logger.error(f"Error in api_vps_info: {e}")
         return jsonify({'success': False, 'message': f'Server-Fehler: {str(e)}'}), 500
 
+@app.route('/api/system-stats', methods=['GET'])
+@limiter.limit("30 per minute")
+def api_system_stats():
+    """API: VPS System-Statistiken"""
+    try:
+        stats = system_monitor.get_current_stats()
+        alerts = alert_manager.check_alerts(stats)
+        performance = system_monitor.get_performance_summary()
+        
+        return jsonify({
+            'success': True,
+            'system_stats': stats,
+            'alerts': alerts,
+            'performance_summary': performance,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error in api_system_stats: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/system-health', methods=['GET'])
+@limiter.limit("20 per minute")
+def api_system_health():
+    """API: VPS System-Gesundheitscheck"""
+    try:
+        health = get_system_health()
+        return jsonify(health)
+    except Exception as e:
+        logger.error(f"Error in api_system_health: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/gateway-metrics', methods=['POST'])
+@limiter.limit("60 per minute")
+def api_gateway_metrics():
+    """API: Gateway-PC Metriken empfangen"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'Keine Daten erhalten'}), 400
+        
+        # Gateway-Metriken speichern/verarbeiten
+        gateway_id = data.get('gateway_id', 'unknown')
+        
+        # Hier könnten die Gateway-Metriken in einer Datenbank gespeichert werden
+        # Für jetzt loggen wir sie nur
+        logger.info(f"Gateway-Metriken erhalten von {gateway_id}: CPU={data.get('cpu_percent', 'N/A')}%, Memory={data.get('memory_percent', 'N/A')}%")
+        
+        # An WebSocket-Clients weiterleiten
+        socketio.emit('gateway_metrics', {
+            'gateway_id': gateway_id,
+            'metrics': data,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        return jsonify({'success': True, 'message': 'Metriken empfangen'})
+        
+    except Exception as e:
+        logger.error(f"Error in api_gateway_metrics: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/alerts', methods=['GET'])
+@limiter.limit("20 per minute") 
+def api_alerts():
+    """API: Aktuelle System-Alerts"""
+    try:
+        hours = int(request.args.get('hours', 24))
+        alerts = alert_manager.get_recent_alerts(hours)
+        
+        return jsonify({
+            'success': True,
+            'alerts': alerts,
+            'count': len(alerts),
+            'hours': hours
+        })
+    except Exception as e:
+        logger.error(f"Error in api_alerts: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 
 # Error Handlers
 @app.errorhandler(404)
@@ -934,12 +1018,116 @@ def internal_error(error):
 def ratelimit_handler(e):
     return jsonify({'error': 'Rate limit exceeded', 'message': str(e.description)}), 429
 
+# WebSocket Events für Real-Time Monitoring
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    emit('status', {'msg': 'Connected to real-time monitoring'})
+    logger.info(f"Client connected: {request.sid}")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection"""
+    logger.info(f"Client disconnected: {request.sid}")
+
+@socketio.on('subscribe_monitoring')
+def handle_subscribe_monitoring():
+    """Client subscription to monitoring data"""
+    emit('monitoring_subscribed', {'msg': 'Subscribed to monitoring updates'})
+    # Sofort aktuelle Daten senden
+    try:
+        stats = system_monitor.get_current_stats()
+        alerts = alert_manager.check_alerts(stats)
+        health = get_system_health()
+        
+        emit('system_update', {
+            'system_stats': stats,
+            'alerts': alerts,
+            'health': health,
+            'clients': client_manager.get_connected_clients(),
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error sending initial monitoring data: {e}")
+
+# Real-Time Monitoring Thread
+class RealtimeMonitor:
+    def __init__(self):
+        self.running = False
+        self.thread = None
+        self.update_interval = config.monitoring.MONITORING_INTERVAL
+    
+    def start(self):
+        """Start real-time monitoring thread"""
+        if not self.running:
+            self.running = True
+            self.thread = threading.Thread(target=self._monitor_loop)
+            self.thread.daemon = True
+            self.thread.start()
+            logger.info("Real-time monitoring started")
+    
+    def stop(self):
+        """Stop real-time monitoring thread"""
+        self.running = False
+        if self.thread:
+            self.thread.join()
+        logger.info("Real-time monitoring stopped")
+    
+    def _monitor_loop(self):
+        """Main monitoring loop"""
+        while self.running:
+            try:
+                # Sammle System-Statistiken
+                stats = system_monitor.get_current_stats()
+                alerts = alert_manager.check_alerts(stats)
+                health = get_system_health()
+                clients = client_manager.get_connected_clients()
+                
+                # Sende Updates an alle verbundenen Clients
+                socketio.emit('system_update', {
+                    'system_stats': stats,
+                    'alerts': alerts,
+                    'health': health,
+                    'connected_clients': len([c for c in clients if c['status'] == 'connected']),
+                    'total_clients': len(clients),
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+                # Bei kritischen Alerts sofort senden
+                critical_alerts = [a for a in alerts if a.get('severity') == 'critical']
+                if critical_alerts:
+                    socketio.emit('critical_alert', {
+                        'alerts': critical_alerts,
+                        'timestamp': datetime.now().isoformat()
+                    })
+                
+                time.sleep(self.update_interval)
+                
+            except Exception as e:
+                logger.error(f"Error in monitoring loop: {e}")
+                time.sleep(30)  # Längere Pause bei Fehlern
+
+# Globale Monitor-Instanz
+realtime_monitor = RealtimeMonitor()
+
 if __name__ == '__main__':
-    logger.info("Starting WireGuard Gateway VPS Server")
+    logger.info("Starting WireGuard Gateway VPS Server with Real-Time Monitoring")
     logger.info(f"Configuration: Interface={config.WIREGUARD_INTERFACE}, Server={config.SERVER_IP}:{config.SERVER_PORT}")
     
     # Stelle sicher, dass die benötigten Verzeichnisse existieren
     os.makedirs(config.DATA_DIR, exist_ok=True)
     
-    # Starte die Flask-Anwendung
-    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
+    # Starte Real-Time Monitoring
+    if config.monitoring.MONITORING_ENABLED:
+        realtime_monitor.start()
+    
+    # Starte die Flask-SocketIO-Anwendung
+    try:
+        socketio.run(app, host=config.HOST, port=config.PORT, debug=config.DEBUG)
+    except KeyboardInterrupt:
+        logger.info("Server shutdown requested")
+        realtime_monitor.stop()
+    except Exception as e:
+        logger.error(f"Server error: {e}")
+        realtime_monitor.stop()
+        raise
