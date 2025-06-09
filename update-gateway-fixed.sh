@@ -13,9 +13,17 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Prüfe ob Gateway-PC
-if [ ! -f "/usr/local/bin/gateway_manager.py" ]; then
+# Prüfe ob Gateway-PC (mehrere mögliche Installationspfade)
+GATEWAY_DETECTED=false
+if [ -f "/usr/local/bin/gateway_manager.py" ] || [ -f "/usr/local/bin/gateway-manager" ] || [ -d "/etc/wireguard-gateway" ] || [ -f "/home/*/gateway_manager.py" ]; then
+    GATEWAY_DETECTED=true
+fi
+
+if [ "$GATEWAY_DETECTED" = "false" ]; then
     echo "❌ Kein Gateway-PC erkannt - Script nur für Gateway-PC"
+    echo "Prüfe: /usr/local/bin/gateway_manager.py, /etc/wireguard-gateway/"
+    echo "Falls Gateway-PC installiert ist, führe das normale Update aus:"
+    echo "curl -s https://raw.githubusercontent.com/cryptofluffy/gateway-project/main/update-complete-system.sh | sudo bash"
     exit 1
 fi
 
