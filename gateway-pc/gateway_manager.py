@@ -58,9 +58,10 @@ class WireGuardGateway:
     def fetch_vps_public_key(self, vps_api_url):
         """Hole aktuellen VPS Public Key vom VPS Dashboard API"""
         try:
-            # URL normalisieren
+            # URL normalisieren BEVOR wir sie verwenden
             vps_api_url = self.normalize_url(vps_api_url)
             print("🔄 Hole aktuellen VPS Public Key vom Dashboard...")
+            print(f"📡 Verbinde zu: {vps_api_url}")
             
             # API-Endpunkt aufrufen
             response = requests.get(f"{vps_api_url}/api/vps-info", timeout=10)
