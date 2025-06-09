@@ -52,6 +52,16 @@ WG_DIR="/etc/wireguard"
 SERVER_PRIVATE_KEY=$(wg genkey)
 SERVER_PUBLIC_KEY=$(echo "$SERVER_PRIVATE_KEY" | wg pubkey)
 
+# Keys in separate Dateien speichern
+echo "$SERVER_PRIVATE_KEY" > "$WG_DIR/server_private.key"
+echo "$SERVER_PUBLIC_KEY" > "$WG_DIR/server_public.key"
+chmod 600 "$WG_DIR/server_private.key"
+chmod 644 "$WG_DIR/server_public.key"
+
+# Für Kompatibilität auch private.key erstellen
+echo "$SERVER_PRIVATE_KEY" > "$WG_DIR/private.key"
+chmod 600 "$WG_DIR/private.key"
+
 # Server-Konfiguration erstellen
 cat > "$WG_DIR/wg0.conf" << EOF
 [Interface]
