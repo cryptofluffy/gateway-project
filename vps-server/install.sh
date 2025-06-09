@@ -92,17 +92,41 @@ Type=simple
 User=root
 WorkingDirectory=/opt/wireguard-vps
 ExecStart=/opt/wireguard-vps/venv/bin/python /opt/wireguard-vps/app.py
+ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=5
+WatchdogSec=30
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
+# File-Watcher Service für automatisches Reload erstellen
+cat > /etc/systemd/system/wireguard-vps-watcher.service << EOF
+[Unit]
+Description=WireGuard VPS File Watcher
+After=wireguard-vps.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/bin/bash -c 'inotifywait -m -e modify,create,delete /opt/wireguard-vps/templates/ --format "%%w%%f" | while read file; do echo "File changed: \$file"; systemctl reload wireguard-vps; sleep 2; done'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# inotify-tools installieren für File-Watching
+apt install -y inotify-tools
+
 # Service aktivieren und starten
 systemctl daemon-reload
 systemctl enable wireguard-vps
+systemctl enable wireguard-vps-watcher
 systemctl start wireguard-vps
+systemctl start wireguard-vps-watcher
 
 # UFW Firewall konfigurieren (falls installiert)
 if command -v ufw >/dev/null 2>&1; then
