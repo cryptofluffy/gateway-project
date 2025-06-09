@@ -57,6 +57,12 @@ class WireGuardGateway:
                 else:
                     print(f"❌ Ungültige API-Antwort: {vps_info}")
                     return None
+            elif response.status_code == 404:
+                print("❌ API-Route /api/vps-info nicht verfügbar")
+                print("💡 Manuelles Setup verwenden:")
+                print(f"   python3 gateway_manager.py setup {vps_api_url} <VPS_PUBLIC_KEY>")
+                print("   (VPS Public Key aus dem VPS Dashboard kopieren)")
+                return None
             else:
                 print(f"❌ API-Fehler: HTTP {response.status_code}")
                 return None
@@ -149,6 +155,9 @@ class WireGuardGateway:
                 self.vps_endpoint = vps_info.get('endpoint', f"{vps_api_url.split('://')[1].split(':')[0]}:51820")
             else:
                 print("❌ Automatischer VPS Public Key Abruf fehlgeschlagen")
+                print("💡 Verwenden Sie das manuelle Setup mit:")
+                print(f"   python3 gateway_manager.py setup {vps_api_url} <VPS_PUBLIC_KEY>")
+                print("   (VPS Public Key aus dem VPS Dashboard kopieren)")
                 return False
         else:
             # Manuell übergebener Key (Fallback für alte Setup-Methode)

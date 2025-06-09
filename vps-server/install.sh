@@ -36,7 +36,15 @@ mkdir -p /opt/wireguard-vps
 # Virtual environment für VPS erstellen
 echo "🐍 Python Virtual Environment wird erstellt..."
 python3 -m venv /opt/wireguard-vps/venv
-/opt/wireguard-vps/venv/bin/pip install -r requirements.txt
+
+# Requirements installieren (mit Fallback bei Fehlern)
+echo "📦 Python-Pakete werden installiert..."
+if [ -f "requirements.txt" ]; then
+    /opt/wireguard-vps/venv/bin/pip install -r requirements.txt
+else
+    echo "⚠️ requirements.txt nicht gefunden, installiere Basis-Pakete..."
+    /opt/wireguard-vps/venv/bin/pip install Flask Werkzeug Flask-Limiter requests jsonschema typing-extensions
+fi
 
 # WireGuard Konfiguration generieren
 echo "🔑 WireGuard-Keys werden generiert..."
