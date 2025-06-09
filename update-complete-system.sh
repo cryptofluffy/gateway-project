@@ -86,7 +86,10 @@ if [ "$SYSTEM_TYPE" = "vps" ]; then
 elif [ "$SYSTEM_TYPE" = "gateway" ]; then
     # Gateway-PC-spezifische Updates - System-Packages verwenden
     echo "📦 System-Python-Pakete installieren..."
-    apt install -y python3-psutil python3-requests python3-configparser python3-full
+    apt install -y python3-psutil python3-requests python3-full python3-pip
+    
+    # Ensure we don't use pip3 system-wide - use apt packages only
+    echo "✅ Python-Pakete über apt installiert"
     
     # Gateway Code aktualisieren
     echo "🔄 Gateway-PC Code aktualisieren..."
