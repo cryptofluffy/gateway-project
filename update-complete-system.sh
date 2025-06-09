@@ -47,12 +47,15 @@ apt update && apt upgrade -y
 # Python-Abhängigkeiten installieren
 echo "🐍 Python-Abhängigkeiten aktualisieren..."
 if [ "$SYSTEM_TYPE" = "vps" ]; then
-    # VPS-spezifische Updates
-    pip3 install --upgrade psutil Flask-SocketIO Flask-WTF bcrypt structlog validators
-    
     # VPS Code aktualisieren
     echo "🔄 VPS Code aktualisieren..."
     cd /opt/wireguard-vps
+    
+    # Virtual Environment erstellen falls nicht vorhanden
+    if [ ! -d "venv" ]; then
+        echo "📦 Virtual Environment erstellen..."
+        python3 -m venv venv
+    fi
     
     # GitHub Repository klonen (falls vorhanden)
     if command -v git >/dev/null 2>&1; then
@@ -66,7 +69,9 @@ if [ "$SYSTEM_TYPE" = "vps" ]; then
         cp -r /tmp/gateway-update/vps-server/templates/* /opt/wireguard-vps/templates/
         cp /tmp/gateway-update/vps-server/requirements.txt /opt/wireguard-vps/
         
-        # Neue Abhängigkeiten installieren
+        # Neue Abhängigkeiten in Virtual Environment installieren
+        echo "📦 Python-Abhängigkeiten in Virtual Environment installieren..."
+        /opt/wireguard-vps/venv/bin/pip install --upgrade pip
         /opt/wireguard-vps/venv/bin/pip install -r requirements.txt
         
         rm -rf /tmp/gateway-update
@@ -79,8 +84,9 @@ if [ "$SYSTEM_TYPE" = "vps" ]; then
     systemctl restart wireguard-vps-watcher
     
 elif [ "$SYSTEM_TYPE" = "gateway" ]; then
-    # Gateway-PC-spezifische Updates
-    pip3 install --upgrade psutil requests configparser
+    # Gateway-PC-spezifische Updates - System-Packages verwenden
+    echo "📦 System-Python-Pakete installieren..."
+    apt install -y python3-psutil python3-requests python3-configparser python3-full
     
     # Gateway Code aktualisieren
     echo "🔄 Gateway-PC Code aktualisieren..."
