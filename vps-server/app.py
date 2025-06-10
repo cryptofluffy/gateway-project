@@ -1123,7 +1123,7 @@ if __name__ == '__main__':
     
     # Starte die Flask-SocketIO-Anwendung
     try:
-        socketio.run(app, host=config.HOST, port=config.PORT, debug=config.DEBUG)
+        socketio.run(app, host=config.HOST, port=config.PORT, debug=config.DEBUG, allow_unsafe_werkzeug=True)
     except KeyboardInterrupt:
         logger.info("Server shutdown requested")
         realtime_monitor.stop()

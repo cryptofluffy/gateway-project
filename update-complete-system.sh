@@ -103,14 +103,14 @@ if [ "$SYSTEM_TYPE" = "vps" ]; then
     systemctl is-active wireguard-vps && echo "  ✓ VPS Web-Service: Aktiv" || echo "  ✗ VPS Web-Service: Fehler"
     
     # Port 8080 prüfen
-    if netstat -tlnp | grep -q ":8080"; then
+    if ss -tlnp | grep -q ":8080" || lsof -i :8080 >/dev/null 2>&1; then
         echo "  ✓ Web-Interface verfügbar auf Port 8080"
     else
         echo "  ✗ Port 8080 nicht erreichbar - starte Service manuell"
         cd /opt/wireguard-vps
         nohup /opt/wireguard-vps/venv/bin/python app.py > /var/log/wireguard-vps-manual.log 2>&1 &
         sleep 3
-        if netstat -tlnp | grep -q ":8080"; then
+        if ss -tlnp | grep -q ":8080" || lsof -i :8080 >/dev/null 2>&1; then
             echo "  ✓ Web-Service manuell gestartet"
         fi
     fi

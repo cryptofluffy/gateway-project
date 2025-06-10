@@ -38,7 +38,7 @@ nohup python3 app.py > /var/log/wireguard-vps.log 2>&1 &
 sleep 5
 
 # Prüfen ob Port 8080 aktiv ist
-if netstat -tlnp | grep -q ":8080"; then
+if ss -tlnp | grep -q ":8080" || lsof -i :8080 >/dev/null 2>&1; then
     echo "✅ VPS läuft auf Port 8080"
     
     # Test API-Endpunkt
