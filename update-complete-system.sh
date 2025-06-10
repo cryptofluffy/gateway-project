@@ -77,11 +77,43 @@ if [ "$SYSTEM_TYPE" = "vps" ]; then
         rm -rf /tmp/gateway-update
     fi
     
-    # Services neu starten
+    # Services neu starten und sicherstellen dass sie laufen
     echo "🔄 VPS Services neu starten..."
     systemctl daemon-reload
-    systemctl restart wireguard-vps
-    systemctl restart wireguard-vps-watcher
+    
+    # WireGuard Interface starten
+    wg-quick down wg0 2>/dev/null || true
+    sleep 2
+    wg-quick up wg0
+    systemctl enable wg-quick@wg0
+    
+    # VPS Web-Service starten
+    systemctl stop wireguard-vps 2>/dev/null || true
+    sleep 2
+    systemctl start wireguard-vps
+    systemctl enable wireguard-vps
+    
+    # Watcher-Service starten (falls vorhanden)
+    systemctl start wireguard-vps-watcher 2>/dev/null || true
+    systemctl enable wireguard-vps-watcher 2>/dev/null || true
+    
+    # Services-Status prüfen
+    echo "✅ Service-Status nach Update:"
+    systemctl is-active wg-quick@wg0 && echo "  ✓ WireGuard Interface: Aktiv" || echo "  ✗ WireGuard Interface: Fehler"
+    systemctl is-active wireguard-vps && echo "  ✓ VPS Web-Service: Aktiv" || echo "  ✗ VPS Web-Service: Fehler"
+    
+    # Port 8080 prüfen
+    if netstat -tlnp | grep -q ":8080"; then
+        echo "  ✓ Web-Interface verfügbar auf Port 8080"
+    else
+        echo "  ✗ Port 8080 nicht erreichbar - starte Service manuell"
+        cd /opt/wireguard-vps
+        nohup /opt/wireguard-vps/venv/bin/python app.py > /var/log/wireguard-vps-manual.log 2>&1 &
+        sleep 3
+        if netstat -tlnp | grep -q ":8080"; then
+            echo "  ✓ Web-Service manuell gestartet"
+        fi
+    fi
     
 elif [ "$SYSTEM_TYPE" = "gateway" ]; then
     # Gateway-PC-spezifische Updates - System-Packages verwenden

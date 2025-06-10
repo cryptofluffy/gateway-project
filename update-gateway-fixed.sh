@@ -72,9 +72,38 @@ echo "📊 Monitoring-Setup..."
 echo "GATEWAY_MONITORING_ENABLED=true" >> /etc/environment
 echo "METRICS_SEND_INTERVAL=60" >> /etc/environment
 
-# Gateway-Service Status prüfen
-echo "🔍 Service-Status prüfen..."
-systemctl status wg-quick@gateway --no-pager -l | head -10 || echo "Gateway Tunnel: Nicht konfiguriert"
+# Gateway-Services starten und konfigurieren
+echo "🔄 Gateway-Services starten..."
+
+# Existierendes Interface herunterfahren
+wg-quick down gateway 2>/dev/null || true
+sleep 2
+
+# Gateway neu starten
+if [ -f "/etc/wireguard/gateway.conf" ]; then
+    wg-quick up gateway
+    systemctl enable wg-quick@gateway
+    echo "  ✓ Gateway Interface gestartet"
+else
+    echo "  ✗ Gateway-Konfiguration nicht gefunden (/etc/wireguard/gateway.conf)"
+    echo "  → Führe Setup aus: sudo gateway-manager setup [VPS_IP] [VPS_PUBLIC_KEY]"
+fi
+
+# Service-Status prüfen
+echo "🔍 Service-Status nach Update:"
+if wg show gateway >/dev/null 2>&1; then
+    echo "  ✓ WireGuard Gateway: Aktiv"
+    wg show gateway | head -3
+else
+    echo "  ✗ WireGuard Gateway: Inaktiv"
+fi
+
+# Monitoring-Service starten (falls vorhanden)
+if [ -f "/usr/local/bin/gateway_manager.py" ]; then
+    echo "🔄 Monitoring-Service starten..."
+    nohup /usr/local/bin/gateway_manager.py monitor > /var/log/gateway-monitor.log 2>&1 &
+    echo "  ✓ Monitoring im Hintergrund gestartet"
+fi
 
 # Update-Information speichern
 echo "💾 Update-Information speichern..."
