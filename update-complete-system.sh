@@ -80,6 +80,10 @@ if [ "$SYSTEM_TYPE" = "vps" ]; then
         rm -rf /tmp/gateway-update
     fi
     
+    # Systemd-Services installieren
+    echo "📋 Systemd-Services installieren..."
+    cp /tmp/gateway-update/vps-server/systemd/wireguard-vps.service /etc/systemd/system/
+    
     # Services neu starten und sicherstellen dass sie laufen
     echo "🔄 VPS Services neu starten..."
     systemctl daemon-reload
@@ -98,7 +102,7 @@ if [ "$SYSTEM_TYPE" = "vps" ]; then
     wg-quick up wg0
     systemctl enable wg-quick@wg0
     
-    # VPS Web-Service starten
+    # VPS Web-Service mit Monitoring starten
     systemctl stop wireguard-vps 2>/dev/null || true
     sleep 2
     systemctl start wireguard-vps
@@ -147,10 +151,23 @@ elif [ "$SYSTEM_TYPE" = "gateway" ]; then
         cp /tmp/gateway-update/gateway-pc/system_monitor.py /usr/local/bin/
         cp /tmp/gateway-update/gateway-pc/gui_app.py /usr/local/bin/ 2>/dev/null || true
         
+        # Systemd-Services installieren
+        echo "📋 Gateway Systemd-Services installieren..."
+        cp /tmp/gateway-update/gateway-pc/systemd/gateway-monitoring.service /etc/systemd/system/
+        cp /tmp/gateway-update/gateway-pc/systemd/gateway-manager.service /etc/systemd/system/
+        
         # Berechtigungen setzen
         chmod +x /usr/local/bin/gateway_manager.py
         chmod +x /usr/local/bin/system_monitor.py
         chmod +x /usr/local/bin/gui_app.py 2>/dev/null || true
+        
+        # Services aktivieren und starten
+        echo "🚀 Gateway-Services aktivieren..."
+        systemctl daemon-reload
+        systemctl enable gateway-monitoring
+        systemctl enable gateway-manager
+        systemctl start gateway-monitoring
+        systemctl start gateway-manager
         
         rm -rf /tmp/gateway-update
     fi

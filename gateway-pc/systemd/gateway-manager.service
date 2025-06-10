@@ -1,0 +1,28 @@
+[Unit]
+Description=WireGuard Gateway Manager with Auto-Monitoring
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/usr/local/bin
+Environment=MONITORING_ENABLED=true
+Environment=AUTO_START_TUNNEL=true
+Environment=LOG_LEVEL=INFO
+ExecStartPre=/bin/bash -c 'apt-get update && apt-get install -y python3-psutil python3-requests python3-full'
+ExecStart=/usr/bin/python3 /usr/local/bin/gateway_manager.py monitor
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gateway-manager
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/wireguard-gateway /etc/wireguard /var/log
+
+[Install]
+WantedBy=multi-user.target

@@ -597,33 +597,39 @@ def get_current_gateway_metrics() -> Optional[SystemMetrics]:
     return gateway_monitor.get_current_metrics()
 
 if __name__ == "__main__":
-    # Test/Debug-Modus
-    logging.basicConfig(level=logging.DEBUG)
+    # Service-Modus - kontinuierliches Monitoring
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('/var/log/gateway-monitoring.log'),
+            logging.StreamHandler()
+        ]
+    )
     
-    print("🔍 Gateway System Monitor Test")
+    print("🚀 Gateway System Monitor Service gestartet")
     
-    monitor = GatewaySystemMonitor()
-    metrics = monitor.get_current_metrics()
-    
-    print(f"CPU: {metrics.cpu_percent}%")
-    print(f"RAM: {metrics.memory_percent}% ({metrics.memory_used}/{metrics.memory_total} bytes)")
-    print(f"Disk: {metrics.disk_percent}% ({metrics.disk_used}/{metrics.disk_total} bytes)")
-    print(f"Temperatur: {metrics.cpu_temp}°C")
-    print(f"WireGuard: {metrics.wireguard_status} (Tunnel: {metrics.tunnel_connected})")
-    print(f"Interfaces: {len(metrics.network_interfaces)}")
-    
-    # Monitoring-Test
-    print("\n🔄 Starte 30-Sekunden-Test...")
-    monitor.update_interval = 5  # 5 Sekunden für Test
-    monitor.start_monitoring()
-    
-    try:
-        time.sleep(30)
-    except KeyboardInterrupt:
-        pass
-    
-    monitor.stop_monitoring()
-    print("✅ Test abgeschlossen")
+    # Monitoring permanent starten
+    if start_gateway_monitoring():
+        print("✅ Gateway-Monitoring läuft - sendet Daten an VPS")
+        
+        try:
+            # Service läuft permanent
+            while True:
+                time.sleep(60)
+                
+                # Health-Check
+                if gateway_monitor and not gateway_monitor.monitoring_active:
+                    print("⚠️ Monitoring gestoppt - starte neu...")
+                    start_gateway_monitoring()
+                    
+        except KeyboardInterrupt:
+            print("\n🛑 Service-Stopp angefordert")
+            stop_gateway_monitoring()
+            print("✅ Gateway-Monitoring gestoppt")
+    else:
+        print("❌ Fehler beim Starten des Gateway-Monitoring")
+        sys.exit(1)
 
 @dataclass
 class NetworkInterface:

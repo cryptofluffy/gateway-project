@@ -1,0 +1,29 @@
+[Unit]
+Description=WireGuard VPS Server with Real-Time Monitoring
+After=network.target wg-quick@wg0.service
+Wants=wg-quick@wg0.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/wireguard-vps
+Environment=MONITORING_ENABLED=true
+Environment=MONITORING_INTERVAL=30
+Environment=LOG_LEVEL=INFO
+ExecStartPre=/bin/bash -c 'if [ ! -f /opt/wireguard-vps/venv/bin/python ]; then python3 -m venv /opt/wireguard-vps/venv && /opt/wireguard-vps/venv/bin/pip install -r requirements.txt; fi'
+ExecStart=/opt/wireguard-vps/venv/bin/python app.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wireguard-vps
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/wireguard-vps /etc/wireguard /var/log
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target
