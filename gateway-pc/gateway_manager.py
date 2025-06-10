@@ -203,7 +203,19 @@ class WireGuardGateway:
         with open('/etc/wireguard-gateway/config.json', 'w') as f:
             json.dump(config, f, indent=2)
         
-        return self.create_wireguard_config()
+        if not self.create_wireguard_config():
+            return False
+        
+        # Automatisch beim VPS registrieren
+        print(f"🔄 Registriere Gateway automatisch beim VPS...")
+        if self.register_with_vps():
+            print(f"✅ Gateway erfolgreich beim VPS registriert!")
+        else:
+            print(f"⚠️ Automatische Registrierung fehlgeschlagen")
+            print(f"🔑 Manuell im VPS-Dashboard hinzufügen:")
+            print(f"   Public Key: {self.gateway_public_key}")
+        
+        return True
     
     def create_wireguard_config(self):
         """Erstelle WireGuard-Konfigurationsdatei"""
@@ -239,6 +251,51 @@ PersistentKeepalive = 25
             return True
         except Exception as e:
             print(f"Fehler beim Erstellen der WireGuard-Konfiguration: {e}")
+            return False
+    
+    def register_with_vps(self, gateway_name="Gateway-PC", location="Auto-Setup"):
+        """Registriere Gateway automatisch beim VPS über API"""
+        try:
+            # VPS-API URL aufbauen
+            api_url = f"{self.vps_api_url}/api/clients"
+            
+            # Registrierungs-Daten
+            data = {
+                "name": gateway_name,
+                "location": location,
+                "public_key": self.gateway_public_key
+            }
+            
+            print(f"📡 Sende Registrierung an: {api_url}")
+            
+            # API-Anfrage senden
+            response = requests.post(
+                api_url,
+                json=data,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    print(f"✅ {result.get('message', 'Gateway registriert')}")
+                    return True
+                else:
+                    print(f"❌ VPS-Fehler: {result.get('message', 'Unbekannter Fehler')}")
+                    return False
+            else:
+                print(f"❌ HTTP-Fehler: {response.status_code}")
+                return False
+                
+        except requests.exceptions.Timeout:
+            print(f"❌ Timeout bei VPS-Verbindung")
+            return False
+        except requests.exceptions.ConnectionError:
+            print(f"❌ Kann VPS nicht erreichen")
+            return False
+        except Exception as e:
+            print(f"❌ Registrierungsfehler: {e}")
             return False
     
     def setup_network_interfaces(self):
