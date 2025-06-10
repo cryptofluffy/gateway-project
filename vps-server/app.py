@@ -502,7 +502,14 @@ class ClientManager:
             # Speichern und WireGuard-Config aktualisieren
             if self._save_clients():
                 if self.config_manager.update_wireguard_config(self.clients):
-                    logger.info(f"Client added successfully: {name}")
+                    # WireGuard Interface neu laden um neue Config zu aktivieren
+                    try:
+                        CommandExecutor.run_command(['wg-quick', 'down', self.config_manager.interface])
+                        time.sleep(1)
+                        CommandExecutor.run_command(['wg-quick', 'up', self.config_manager.interface])
+                        logger.info(f"Client added and WireGuard reloaded: {name}")
+                    except Exception as e:
+                        logger.warning(f"Could not reload WireGuard interface: {e}")
                     return True, "Client erfolgreich hinzugefügt"
                 else:
                     # Rollback bei Config-Update-Fehler
