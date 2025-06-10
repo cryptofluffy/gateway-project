@@ -49,6 +49,584 @@ class SystemMetrics:
 
 @dataclass
 class NetworkInterface:
+    """Netzwerk-Interface Informationen"""
+    name: str
+    ip_address: Optional[str]
+    mac_address: Optional[str]
+    is_up: bool
+    speed: Optional[int]
+    rx_bytes: int
+    tx_bytes: int
+    rx_packets: int
+    tx_packets: int
+
+class GatewaySystemMonitor:
+    """Umfassendes System-Monitoring für Gateway-PC"""
+    
+    def __init__(self, vps_api_url: str = None):
+        self.vps_api_url = vps_api_url
+        self.monitoring_active = False
+        self.monitor_thread = None
+        self.metrics_history = []
+        self.max_history = 100  # Letzte 100 Metriken speichern
+        
+        # Gateway-spezifische Konfiguration
+        self.gateway_config_file = '/etc/wireguard-gateway/config.json'
+        self.gateway_interface = 'gateway'
+        
+        # Monitoring-Intervall (Sekunden)
+        self.update_interval = int(os.getenv('METRICS_SEND_INTERVAL', '60'))
+        
+        # Gateway-Identifikation
+        self.gateway_id = self._get_gateway_id()
+        
+        logger.info(f"Gateway System Monitor initialisiert - ID: {self.gateway_id}")
+    
+    def _get_gateway_id(self) -> str:
+        """Eindeutige Gateway-ID generieren"""
+        try:
+            # Versuche aus Gateway-Konfiguration zu lesen
+            if os.path.exists(self.gateway_config_file):
+                with open(self.gateway_config_file, 'r') as f:
+                    config = json.load(f)
+                    gateway_id = config.get('gateway_id')
+                    if gateway_id:
+                        return gateway_id
+            
+            # Fallback: MAC-Adresse der primären Schnittstelle
+            if PSUTIL_AVAILABLE:
+                interfaces = psutil.net_if_addrs()
+                for interface_name, addresses in interfaces.items():
+                    if interface_name.startswith(('eth', 'enp', 'ens')):
+                        for addr in addresses:
+                            if addr.family.name == 'AF_PACKET':  # MAC-Adresse
+                                return f"gateway-{addr.address.replace(':', '')}"
+            
+            # Letzter Fallback: Hostname
+            import socket
+            return f"gateway-{socket.gethostname()}"
+            
+        except Exception as e:
+            logger.warning(f"Fehler beim Ermitteln der Gateway-ID: {e}")
+            return "gateway-unknown"
+    
+    def get_current_metrics(self) -> SystemMetrics:
+        """Sammle aktuelle System-Metriken"""
+        try:
+            # CPU-Metriken
+            cpu_percent = self._get_cpu_percent()
+            cpu_temp = self._get_cpu_temperature()
+            cpu_freq = self._get_cpu_frequency()
+            
+            # Memory-Metriken
+            memory_info = self._get_memory_info()
+            
+            # Disk-Metriken
+            disk_info = self._get_disk_info()
+            
+            # Swap-Metriken
+            swap_info = self._get_swap_info()
+            
+            # Netzwerk-Interfaces
+            network_interfaces = self._get_network_interfaces()
+            
+            # System-Informationen
+            uptime = self._get_uptime()
+            load_avg = self._get_load_average()
+            
+            # WireGuard-Status
+            wg_status, tunnel_connected = self._get_wireguard_status()
+            
+            metrics = SystemMetrics(
+                timestamp=datetime.now().isoformat(),
+                cpu_percent=cpu_percent,
+                cpu_temp=cpu_temp,
+                cpu_frequency=cpu_freq,
+                memory_total=memory_info['total'],
+                memory_used=memory_info['used'],
+                memory_percent=memory_info['percent'],
+                disk_total=disk_info['total'],
+                disk_used=disk_info['used'],
+                disk_percent=disk_info['percent'],
+                swap_total=swap_info['total'],
+                swap_used=swap_info['used'],
+                swap_percent=swap_info['percent'],
+                network_interfaces=network_interfaces,
+                uptime_seconds=uptime,
+                load_average=load_avg,
+                wireguard_status=wg_status,
+                tunnel_connected=tunnel_connected
+            )
+            
+            # Zur Historie hinzufügen
+            self.metrics_history.append(asdict(metrics))
+            if len(self.metrics_history) > self.max_history:
+                self.metrics_history.pop(0)
+            
+            return metrics
+            
+        except Exception as e:
+            logger.error(f"Fehler beim Sammeln der Metriken: {e}")
+            # Fallback mit minimalen Daten
+            return SystemMetrics(
+                timestamp=datetime.now().isoformat(),
+                cpu_percent=0.0,
+                cpu_temp=None,
+                cpu_frequency=None,
+                memory_total=0,
+                memory_used=0,
+                memory_percent=0.0,
+                disk_total=0,
+                disk_used=0,
+                disk_percent=0.0,
+                swap_total=0,
+                swap_used=0,
+                swap_percent=0.0,
+                network_interfaces={},
+                uptime_seconds=0,
+                load_average=[0.0, 0.0, 0.0],
+                wireguard_status="error",
+                tunnel_connected=False
+            )
+    
+    def send_metrics_to_vps(self, metrics: SystemMetrics) -> bool:
+        """Sende Metriken an VPS Dashboard"""
+        if not self.vps_api_url:
+            logger.debug("Keine VPS API URL konfiguriert - Metriken werden nicht gesendet")
+            return False
+        
+        try:
+            # Normalisiere VPS URL
+            if not self.vps_api_url.startswith(('http://', 'https://')):
+                vps_url = f"http://{self.vps_api_url}"
+            else:
+                vps_url = self.vps_api_url
+            
+            api_endpoint = f"{vps_url}/api/gateway-metrics"
+            
+            # Konvertiere Metriken zu Dictionary
+            metrics_data = asdict(metrics)
+            metrics_data['gateway_id'] = self.gateway_id
+            
+            # API-Anfrage senden
+            response = requests.post(
+                api_endpoint,
+                json=metrics_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                logger.debug("Metriken erfolgreich an VPS gesendet")
+                return True
+            else:
+                logger.warning(f"VPS API Fehler: {response.status_code} - {response.text}")
+                return False
+                
+        except requests.exceptions.Timeout:
+            logger.warning("Timeout beim Senden der Metriken an VPS")
+            return False
+        except requests.exceptions.ConnectionError:
+            logger.warning("Verbindungsfehler beim Senden der Metriken an VPS")
+            return False
+        except Exception as e:
+            logger.error(f"Fehler beim Senden der Metriken: {e}")
+            return False
+    
+    def start_monitoring(self) -> bool:
+        """Starte kontinuierliches Monitoring"""
+        if self.monitoring_active:
+            logger.warning("Monitoring bereits aktiv")
+            return False
+        
+        # VPS API URL aus Gateway-Konfiguration laden
+        self._load_vps_config()
+        
+        self.monitoring_active = True
+        self.monitor_thread = threading.Thread(target=self._monitoring_loop)
+        self.monitor_thread.daemon = True
+        self.monitor_thread.start()
+        
+        logger.info(f"Gateway Monitoring gestartet - Intervall: {self.update_interval}s")
+        return True
+    
+    def stop_monitoring(self):
+        """Stoppe Monitoring"""
+        self.monitoring_active = False
+        if self.monitor_thread:
+            self.monitor_thread.join(timeout=5)
+        logger.info("Gateway Monitoring gestoppt")
+    
+    def _load_vps_config(self):
+        """Lade VPS-Konfiguration aus Gateway-Config"""
+        try:
+            if os.path.exists(self.gateway_config_file):
+                with open(self.gateway_config_file, 'r') as f:
+                    config = json.load(f)
+                    if not self.vps_api_url:
+                        self.vps_api_url = config.get('vps_api_url')
+                        logger.info(f"VPS API URL aus Konfiguration geladen: {self.vps_api_url}")
+        except Exception as e:
+            logger.warning(f"Fehler beim Laden der VPS-Konfiguration: {e}")
+    
+    def _monitoring_loop(self):
+        """Haupt-Monitoring-Schleife"""
+        logger.info("Gateway Monitoring-Schleife gestartet")
+        
+        while self.monitoring_active:
+            try:
+                # Sammle aktuelle Metriken
+                metrics = self.get_current_metrics()
+                
+                # Lokales Logging
+                logger.debug(f"Metriken gesammelt: CPU={metrics.cpu_percent}%, RAM={metrics.memory_percent}%, Temp={metrics.cpu_temp}°C")
+                
+                # An VPS senden
+                if self.vps_api_url:
+                    self.send_metrics_to_vps(metrics)
+                
+                # Warte bis zum nächsten Update
+                time.sleep(self.update_interval)
+                
+            except Exception as e:
+                logger.error(f"Fehler in Monitoring-Schleife: {e}")
+                time.sleep(30)  # Längere Pause bei Fehlern
+    
+    def _get_cpu_percent(self) -> float:
+        """CPU-Auslastung ermitteln"""
+        if PSUTIL_AVAILABLE:
+            return psutil.cpu_percent(interval=1)
+        else:
+            # Fallback: /proc/loadavg
+            try:
+                with open('/proc/loadavg', 'r') as f:
+                    load = float(f.read().split()[0])
+                    return min(load * 100, 100.0)  # Grobe Schätzung
+            except Exception:
+                return 0.0
+    
+    def _get_cpu_temperature(self) -> Optional[float]:
+        """CPU-Temperatur ermitteln (Raspberry Pi optimiert)"""
+        temp_sources = [
+            '/sys/class/thermal/thermal_zone0/temp',  # Raspberry Pi
+            '/opt/vc/bin/vcgencmd'  # Pi-spezifisches Tool
+        ]
+        
+        # Thermal Zone (Standard Linux)
+        try:
+            if os.path.exists(temp_sources[0]):
+                with open(temp_sources[0], 'r') as f:
+                    temp_raw = int(f.read().strip())
+                    return temp_raw / 1000.0  # milli-Celsius zu Celsius
+        except Exception:
+            pass
+        
+        # vcgencmd (Raspberry Pi spezifisch)
+        try:
+            result = subprocess.run(['vcgencmd', 'measure_temp'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                temp_str = result.stdout.strip()
+                if 'temp=' in temp_str:
+                    temp_value = temp_str.split('temp=')[1].replace("'C", "")
+                    return float(temp_value)
+        except Exception:
+            pass
+        
+        # psutil sensors (falls verfügbar)
+        if PSUTIL_AVAILABLE:
+            try:
+                temps = psutil.sensors_temperatures()
+                if temps:
+                    for name, entries in temps.items():
+                        if entries:
+                            return entries[0].current
+            except Exception:
+                pass
+        
+        return None
+    
+    def _get_cpu_frequency(self) -> Optional[float]:
+        """CPU-Frequenz ermitteln"""
+        if PSUTIL_AVAILABLE:
+            try:
+                freq = psutil.cpu_freq()
+                if freq:
+                    return freq.current
+            except Exception:
+                pass
+        
+        # Fallback: /proc/cpuinfo
+        try:
+            with open('/proc/cpuinfo', 'r') as f:
+                for line in f:
+                    if 'cpu MHz' in line:
+                        return float(line.split(':')[1].strip())
+        except Exception:
+            pass
+        
+        return None
+    
+    def _get_memory_info(self) -> Dict:
+        """Memory-Informationen ermitteln"""
+        if PSUTIL_AVAILABLE:
+            mem = psutil.virtual_memory()
+            return {
+                'total': mem.total,
+                'used': mem.used,
+                'percent': mem.percent
+            }
+        else:
+            # Fallback: /proc/meminfo
+            try:
+                with open('/proc/meminfo', 'r') as f:
+                    meminfo = {}
+                    for line in f:
+                        key, value = line.split(':')
+                        meminfo[key.strip()] = int(value.strip().split()[0]) * 1024  # KB zu Bytes
+                
+                total = meminfo.get('MemTotal', 0)
+                available = meminfo.get('MemAvailable', meminfo.get('MemFree', 0))
+                used = total - available
+                percent = (used / total * 100) if total > 0 else 0
+                
+                return {
+                    'total': total,
+                    'used': used,
+                    'percent': percent
+                }
+            except Exception:
+                return {'total': 0, 'used': 0, 'percent': 0}
+    
+    def _get_disk_info(self) -> Dict:
+        """Disk-Informationen ermitteln"""
+        if PSUTIL_AVAILABLE:
+            try:
+                disk = psutil.disk_usage('/')
+                return {
+                    'total': disk.total,
+                    'used': disk.used,
+                    'percent': (disk.used / disk.total * 100) if disk.total > 0 else 0
+                }
+            except Exception:
+                pass
+        
+        # Fallback: df command
+        try:
+            result = subprocess.run(['df', '/'], capture_output=True, text=True)
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                if len(lines) >= 2:
+                    fields = lines[1].split()
+                    total = int(fields[1]) * 1024  # KB zu Bytes
+                    used = int(fields[2]) * 1024
+                    percent = float(fields[4].rstrip('%'))
+                    return {
+                        'total': total,
+                        'used': used,
+                        'percent': percent
+                    }
+        except Exception:
+            pass
+        
+        return {'total': 0, 'used': 0, 'percent': 0}
+    
+    def _get_swap_info(self) -> Dict:
+        """Swap-Informationen ermitteln"""
+        if PSUTIL_AVAILABLE:
+            try:
+                swap = psutil.swap_memory()
+                return {
+                    'total': swap.total,
+                    'used': swap.used,
+                    'percent': swap.percent
+                }
+            except Exception:
+                pass
+        
+        # Fallback: /proc/meminfo
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                swap_total = 0
+                swap_free = 0
+                for line in f:
+                    if line.startswith('SwapTotal:'):
+                        swap_total = int(line.split()[1]) * 1024  # KB zu Bytes
+                    elif line.startswith('SwapFree:'):
+                        swap_free = int(line.split()[1]) * 1024
+                
+                swap_used = swap_total - swap_free
+                swap_percent = (swap_used / swap_total * 100) if swap_total > 0 else 0
+                
+                return {
+                    'total': swap_total,
+                    'used': swap_used,
+                    'percent': swap_percent
+                }
+        except Exception:
+            pass
+        
+        return {'total': 0, 'used': 0, 'percent': 0}
+    
+    def _get_network_interfaces(self) -> Dict[str, Dict]:
+        """Netzwerk-Interface-Informationen sammeln"""
+        interfaces = {}
+        
+        if PSUTIL_AVAILABLE:
+            try:
+                # Interface-Statistiken
+                net_io = psutil.net_io_counters(pernic=True)
+                net_addrs = psutil.net_if_addrs()
+                net_stats = psutil.net_if_stats()
+                
+                for interface_name, io_stats in net_io.items():
+                    interface_info = {
+                        'name': interface_name,
+                        'bytes_sent': io_stats.bytes_sent,
+                        'bytes_recv': io_stats.bytes_recv,
+                        'packets_sent': io_stats.packets_sent,
+                        'packets_recv': io_stats.packets_recv,
+                        'errors_in': io_stats.errin,
+                        'errors_out': io_stats.errout,
+                        'ip_address': None,
+                        'mac_address': None,
+                        'is_up': False,
+                        'speed': None
+                    }
+                    
+                    # IP und MAC-Adressen
+                    if interface_name in net_addrs:
+                        for addr in net_addrs[interface_name]:
+                            if addr.family.name == 'AF_INET':  # IPv4
+                                interface_info['ip_address'] = addr.address
+                            elif addr.family.name == 'AF_PACKET':  # MAC
+                                interface_info['mac_address'] = addr.address
+                    
+                    # Interface-Status
+                    if interface_name in net_stats:
+                        interface_info['is_up'] = net_stats[interface_name].isup
+                        interface_info['speed'] = net_stats[interface_name].speed
+                    
+                    interfaces[interface_name] = interface_info
+                    
+            except Exception as e:
+                logger.warning(f"Fehler beim Sammeln der Interface-Daten: {e}")
+        
+        return interfaces
+    
+    def _get_uptime(self) -> int:
+        """System-Uptime in Sekunden"""
+        if PSUTIL_AVAILABLE:
+            try:
+                return int(time.time() - psutil.boot_time())
+            except Exception:
+                pass
+        
+        # Fallback: /proc/uptime
+        try:
+            with open('/proc/uptime', 'r') as f:
+                uptime_seconds = float(f.read().split()[0])
+                return int(uptime_seconds)
+        except Exception:
+            return 0
+    
+    def _get_load_average(self) -> List[float]:
+        """Load Average ermitteln"""
+        if PSUTIL_AVAILABLE:
+            try:
+                return list(psutil.getloadavg())
+            except Exception:
+                pass
+        
+        # Fallback: /proc/loadavg
+        try:
+            with open('/proc/loadavg', 'r') as f:
+                load_values = f.read().split()[:3]
+                return [float(x) for x in load_values]
+        except Exception:
+            return [0.0, 0.0, 0.0]
+    
+    def _get_wireguard_status(self) -> Tuple[str, bool]:
+        """WireGuard-Status ermitteln"""
+        try:
+            result = subprocess.run(['wg', 'show', self.gateway_interface], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                output = result.stdout.strip()
+                if 'latest handshake:' in output:
+                    return "connected", True
+                elif 'peer:' in output:
+                    return "configured", False
+                else:
+                    return "interface_up", False
+            else:
+                return "disconnected", False
+        except Exception as e:
+            logger.debug(f"WireGuard Status-Fehler: {e}")
+            return "error", False
+
+# Globale Monitor-Instanz für CLI-Zugriff
+gateway_monitor = None
+
+def start_gateway_monitoring(vps_api_url: str = None) -> bool:
+    """Starte Gateway-Monitoring global"""
+    global gateway_monitor
+    
+    if gateway_monitor and gateway_monitor.monitoring_active:
+        logger.warning("Gateway Monitoring bereits aktiv")
+        return False
+    
+    gateway_monitor = GatewaySystemMonitor(vps_api_url)
+    return gateway_monitor.start_monitoring()
+
+def stop_gateway_monitoring():
+    """Stoppe Gateway-Monitoring global"""
+    global gateway_monitor
+    
+    if gateway_monitor:
+        gateway_monitor.stop_monitoring()
+        gateway_monitor = None
+
+def get_current_gateway_metrics() -> Optional[SystemMetrics]:
+    """Hole aktuelle Gateway-Metriken"""
+    global gateway_monitor
+    
+    if not gateway_monitor:
+        gateway_monitor = GatewaySystemMonitor()
+    
+    return gateway_monitor.get_current_metrics()
+
+if __name__ == "__main__":
+    # Test/Debug-Modus
+    logging.basicConfig(level=logging.DEBUG)
+    
+    print("🔍 Gateway System Monitor Test")
+    
+    monitor = GatewaySystemMonitor()
+    metrics = monitor.get_current_metrics()
+    
+    print(f"CPU: {metrics.cpu_percent}%")
+    print(f"RAM: {metrics.memory_percent}% ({metrics.memory_used}/{metrics.memory_total} bytes)")
+    print(f"Disk: {metrics.disk_percent}% ({metrics.disk_used}/{metrics.disk_total} bytes)")
+    print(f"Temperatur: {metrics.cpu_temp}°C")
+    print(f"WireGuard: {metrics.wireguard_status} (Tunnel: {metrics.tunnel_connected})")
+    print(f"Interfaces: {len(metrics.network_interfaces)}")
+    
+    # Monitoring-Test
+    print("\n🔄 Starte 30-Sekunden-Test...")
+    monitor.update_interval = 5  # 5 Sekunden für Test
+    monitor.start_monitoring()
+    
+    try:
+        time.sleep(30)
+    except KeyboardInterrupt:
+        pass
+    
+    monitor.stop_monitoring()
+    print("✅ Test abgeschlossen")
+
+@dataclass
+class NetworkInterface:
     """Netzwerk-Interface Statistiken"""
     name: str
     bytes_sent: int

@@ -15,6 +15,14 @@ from datetime import datetime
 import configparser
 from urllib.parse import urlparse
 
+# Gateway Monitoring importieren
+try:
+    from system_monitor import GatewaySystemMonitor, start_gateway_monitoring
+    MONITORING_AVAILABLE = True
+except ImportError:
+    MONITORING_AVAILABLE = False
+    print("⚠️ System-Monitoring nicht verfügbar - system_monitor.py nicht gefunden")
+
 class WireGuardGateway:
     def __init__(self):
         self.config_file = '/etc/wireguard/gateway.conf'
@@ -653,6 +661,15 @@ if __name__ == "__main__":
         
         elif command == "monitor":
             print("🔍 Starte Gateway-Monitoring...")
+            
+            # Integriertes System-Monitoring starten
+            if MONITORING_AVAILABLE:
+                if start_gateway_monitoring(gateway.vps_api_url):
+                    print("✅ System-Monitoring gestartet - sendet Metriken an VPS")
+                else:
+                    print("⚠️ System-Monitoring konnte nicht gestartet werden")
+            
+            # WireGuard-Monitoring
             monitor = GatewayMonitor(gateway)
             monitor.start_monitoring()
             
@@ -662,6 +679,12 @@ if __name__ == "__main__":
             except KeyboardInterrupt:
                 print("\n🛑 Monitoring gestoppt")
                 monitor.stop_monitoring()
+                
+                # System-Monitoring stoppen
+                if MONITORING_AVAILABLE:
+                    from system_monitor import stop_gateway_monitoring
+                    stop_gateway_monitoring()
+                    print("✅ System-Monitoring gestoppt")
         
         else:
             print("Unbekannter Befehl:", command)
