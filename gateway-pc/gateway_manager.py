@@ -206,14 +206,14 @@ class WireGuardGateway:
         if not self.create_wireguard_config():
             return False
         
-        # Automatisch beim VPS registrieren
-        print(f"🔄 Registriere Gateway automatisch beim VPS...")
-        if self.register_with_vps():
-            print(f"✅ Gateway erfolgreich beim VPS registriert!")
-        else:
-            print(f"⚠️ Automatische Registrierung fehlgeschlagen")
-            print(f"🔑 Manuell im VPS-Dashboard hinzufügen:")
-            print(f"   Public Key: {self.gateway_public_key}")
+        # Gateway Public Key anzeigen für manuelles Hinzufügen
+        print(f"")
+        print(f"🔑 Gateway-Setup abgeschlossen!")
+        print(f"📋 Nächster Schritt: Gateway im VPS-Dashboard hinzufügen")
+        print(f"")
+        print(f"   Gateway Public Key: {self.gateway_public_key}")
+        print(f"")
+        print(f"💡 Kopiere den Public Key und füge das Gateway im VPS-Dashboard hinzu")
         
         return True
     

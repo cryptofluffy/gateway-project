@@ -261,10 +261,21 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
     def update_wireguard_config(self, clients: Dict) -> bool:
         """WireGuard-Konfiguration mit aktuellen Clients aktualisieren"""
         try:
+            # Private Key laden
+            try:
+                with open(config.WIREGUARD_PRIVATE_KEY_PATH, 'r') as f:
+                    private_key = f.read().strip()
+            except FileNotFoundError:
+                logger.error(f"Private key not found: {config.WIREGUARD_PRIVATE_KEY_PATH}")
+                return False
+            
             config_content = f"""[Interface]
-PrivateKey = $(cat {config.WIREGUARD_PRIVATE_KEY_PATH})
+PrivateKey = {private_key}
 Address = {self.server_ip}/24
 ListenPort = {self.server_port}
+SaveConfig = false
+
+# Forwarding und NAT aktivieren
 PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
 
