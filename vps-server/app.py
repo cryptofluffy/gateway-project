@@ -262,11 +262,22 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
         """WireGuard-Konfiguration mit aktuellen Clients aktualisieren"""
         try:
             # Private Key laden
-            try:
-                with open(config.WIREGUARD_PRIVATE_KEY_PATH, 'r') as f:
-                    private_key = f.read().strip()
-            except FileNotFoundError:
-                logger.error(f"Private key not found: {config.WIREGUARD_PRIVATE_KEY_PATH}")
+            private_key_paths = [
+                '/etc/wireguard/server_private.key',
+                '/etc/wireguard/privatekey'
+            ]
+            
+            private_key = None
+            for key_path in private_key_paths:
+                try:
+                    with open(key_path, 'r') as f:
+                        private_key = f.read().strip()
+                        break
+                except FileNotFoundError:
+                    continue
+            
+            if not private_key:
+                logger.error(f"Private key not found in any of: {private_key_paths}")
                 return False
             
             config_content = f"""[Interface]
