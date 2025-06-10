@@ -455,19 +455,18 @@ class ClientManager:
         """Hole aktuelle WireGuard Peer-Informationen mit Caching"""
         current_time = time.time()
         
-        # Cache für 30 Sekunden verwenden
-        if use_cache and self._peers_cache and (current_time - self._peers_cache_time) < 30:
+        # Cache für 10 Sekunden verwenden (kürzere Cache-Zeit für bessere Aktualität)
+        if use_cache and self._peers_cache and (current_time - self._peers_cache_time) < 10:
             return self._peers_cache
         
         wg_peers = {}
         try:
             result = CommandExecutor.run_command(['wg', 'show', self.config_manager.interface], timeout=5)
             if result.returncode == 0:
-                # Optimized parsing mit regulären Ausdrücken
-                import re
-                peer_pattern = re.compile(r'peer:\s*(\S+)')
-                handshake_pattern = re.compile(r'latest handshake:\s*(.+)')
+                logger.debug(f"WireGuard show output: {result.stdout}")
                 
+                # Verbessertes Parsing für WireGuard-Ausgabe
+                import re
                 lines = result.stdout.split('\n')
                 current_peer = None
                 
@@ -476,16 +475,40 @@ class ClientManager:
                     if not line:
                         continue
                     
-                    peer_match = peer_pattern.match(line)
-                    if peer_match:
-                        current_peer = peer_match.group(1)
-                        wg_peers[current_peer] = {'status': 'connected'}
+                    # Peer-Zeile: "peer: <public_key>"
+                    if line.startswith('peer:'):
+                        current_peer = line.split(':', 1)[1].strip()
+                        wg_peers[current_peer] = {
+                            'status': 'connected',
+                            'last_handshake': 'Nie',
+                            'transfer_rx': '0 B',
+                            'transfer_tx': '0 B',
+                            'endpoint': 'Unbekannt'
+                        }
                         continue
                     
+                    # Wenn wir einen aktuellen Peer haben, parse die Details
                     if current_peer:
-                        handshake_match = handshake_pattern.search(line)
-                        if handshake_match:
-                            wg_peers[current_peer]['last_handshake'] = handshake_match.group(1)
+                        if 'latest handshake:' in line:
+                            handshake = line.split('latest handshake:', 1)[1].strip()
+                            # Formatiere den Handshake besser
+                            if handshake and handshake != '(never)':
+                                wg_peers[current_peer]['last_handshake'] = handshake
+                            else:
+                                wg_peers[current_peer]['last_handshake'] = 'Nie'
+                        
+                        elif 'transfer:' in line:
+                            transfer = line.split('transfer:', 1)[1].strip()
+                            if ' received,' in transfer and ' sent' in transfer:
+                                parts = transfer.split(' received,')
+                                rx = parts[0].strip()
+                                tx = parts[1].replace(' sent', '').strip()
+                                wg_peers[current_peer]['transfer_rx'] = rx
+                                wg_peers[current_peer]['transfer_tx'] = tx
+                        
+                        elif 'endpoint:' in line:
+                            endpoint = line.split('endpoint:', 1)[1].strip()
+                            wg_peers[current_peer]['endpoint'] = endpoint
                             
         except Exception as e:
             logger.error(f"Error getting WireGuard peers: {e}")
@@ -497,6 +520,7 @@ class ClientManager:
         self._peers_cache = wg_peers
         self._peers_cache_time = current_time
         
+        logger.debug(f"Parsed WireGuard peers: {wg_peers}")
         return wg_peers
     
     def add_client(self, name: str, location: str, public_key: str, network_config: Dict = None) -> Tuple[bool, str]:

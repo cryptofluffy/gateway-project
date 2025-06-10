@@ -136,6 +136,11 @@ else
     echo "⚠️ Virtual Environment nicht gefunden - verwende System-Python"
 fi
 
+# Environment-Variablen für Monitoring setzen
+export MONITORING_ENABLED=true
+export MONITORING_INTERVAL=15
+export LOG_LEVEL=DEBUG
+
 # VPS-Anwendung im Hintergrund starten
 nohup python3 app.py > /var/log/wireguard-vps.log 2>&1 &
 VPS_PID=$!
