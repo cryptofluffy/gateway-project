@@ -69,6 +69,9 @@ if [ "$SYSTEM_TYPE" = "vps" ]; then
         cp -r /tmp/gateway-update/vps-server/templates/* /opt/wireguard-vps/templates/
         cp /tmp/gateway-update/vps-server/requirements.txt /opt/wireguard-vps/
         
+        # WireGuard-Fix-Script kopieren
+        cp /tmp/gateway-update/fix-wireguard-startup.py /opt/wireguard-vps/
+        
         # Neue Abhängigkeiten in Virtual Environment installieren
         echo "📦 Python-Abhängigkeiten in Virtual Environment installieren..."
         /opt/wireguard-vps/venv/bin/pip install --upgrade pip
@@ -80,6 +83,14 @@ if [ "$SYSTEM_TYPE" = "vps" ]; then
     # Services neu starten und sicherstellen dass sie laufen
     echo "🔄 VPS Services neu starten..."
     systemctl daemon-reload
+    
+    # WireGuard-Konfiguration automatisch reparieren
+    echo "🔧 WireGuard-Konfiguration reparieren..."
+    if [ -f "/opt/wireguard-vps/fix-wireguard-startup.py" ]; then
+        python3 /opt/wireguard-vps/fix-wireguard-startup.py
+    else
+        python3 /tmp/gateway-update/fix-wireguard-startup.py
+    fi
     
     # WireGuard Interface starten
     wg-quick down wg0 2>/dev/null || true

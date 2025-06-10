@@ -219,11 +219,24 @@ class ConfigManager:
             return None
     
     def _ensure_wireguard_config(self, private_key: str):
-        """WireGuard Konfiguration erstellen falls sie nicht existiert"""
+        """WireGuard Konfiguration erstellen falls sie nicht existiert oder reparieren falls fehlerhaft"""
         try:
-            if not os.path.exists(self.config_path):
+            needs_fix = False
+            
+            # Prüfe ob Konfiguration existiert und korrekt ist
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r') as f:
+                    existing_content = f.read()
+                    
+                # Prüfe auf fehlerhafte Shell-Substitution
+                if '$(cat' in existing_content or 'PrivateKey = ' not in existing_content:
+                    logger.warning("WireGuard config contains shell substitution or missing private key - fixing...")
+                    needs_fix = True
+            else:
                 logger.info("Creating WireGuard configuration...")
-                
+                needs_fix = True
+            
+            if needs_fix:
                 config_content = f"""[Interface]
 PrivateKey = {private_key}
 Address = {self.server_ip}/24
@@ -238,7 +251,7 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
 """
                 
                 FileManager.write_file(self.config_path, config_content)
-                logger.info(f"WireGuard config created at {self.config_path}")
+                logger.info(f"WireGuard config {'fixed' if os.path.exists(self.config_path) else 'created'} at {self.config_path}")
                 
                 # IP-Forwarding aktivieren
                 try:
@@ -935,6 +948,41 @@ def api_restart_wireguard():
             return jsonify({'success': False, 'message': 'Fehler beim Neustart'}), 500
     except Exception as e:
         logger.error(f"Error in api_restart_wireguard: {e}")
+        return jsonify({'success': False, 'message': f'Server-Fehler: {str(e)}'}), 500
+
+@app.route('/api/fix-wireguard-config', methods=['POST'])
+@limiter.limit("3 per minute")
+def api_fix_wireguard_config():
+    """API: WireGuard-Konfiguration automatisch reparieren"""
+    try:
+        # Keys sicherstellen und Konfiguration reparieren
+        public_key = config_manager._ensure_wireguard_keys()
+        if public_key:
+            # Aktuelle Clients laden und Konfiguration komplett neu schreiben
+            config_manager.update_wireguard_config(client_manager.clients)
+            
+            # WireGuard Interface neu starten
+            success = config_manager.restart_interface()
+            
+            if success:
+                return jsonify({
+                    'success': True, 
+                    'message': 'WireGuard-Konfiguration erfolgreich repariert',
+                    'public_key': public_key
+                })
+            else:
+                return jsonify({
+                    'success': False, 
+                    'message': 'Konfiguration repariert, aber Interface-Neustart fehlgeschlagen'
+                }), 500
+        else:
+            return jsonify({
+                'success': False, 
+                'message': 'Fehler beim Generieren der WireGuard-Keys'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error in api_fix_wireguard_config: {e}")
         return jsonify({'success': False, 'message': f'Server-Fehler: {str(e)}'}), 500
 
 @app.route('/api/vps-info', methods=['GET'])
