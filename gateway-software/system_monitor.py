@@ -469,7 +469,7 @@ class GatewaySystemMonitor:
         return {'total': 0, 'used': 0, 'percent': 0}
     
     def _get_network_interfaces(self) -> Dict[str, Dict]:
-        """Netzwerk-Interface-Informationen sammeln"""
+        """Netzwerk-Interface-Informationen sammeln (nur aktive Interfaces)"""
         interfaces = {}
         
         if PSUTIL_AVAILABLE:
@@ -480,6 +480,10 @@ class GatewaySystemMonitor:
                 net_stats = psutil.net_if_stats()
                 
                 for interface_name, io_stats in net_io.items():
+                    # Überspringe Loopback-Interface
+                    if interface_name == 'lo':
+                        continue
+                    
                     interface_info = {
                         'name': interface_name,
                         'bytes_sent': io_stats.bytes_sent,
@@ -494,6 +498,15 @@ class GatewaySystemMonitor:
                         'speed': None
                     }
                     
+                    # Interface-Status prüfen
+                    if interface_name in net_stats:
+                        interface_info['is_up'] = net_stats[interface_name].isup
+                        interface_info['speed'] = net_stats[interface_name].speed
+                    
+                    # Nur aktive Interfaces hinzufügen
+                    if not interface_info['is_up']:
+                        continue
+                    
                     # IP und MAC-Adressen
                     if interface_name in net_addrs:
                         for addr in net_addrs[interface_name]:
@@ -502,12 +515,9 @@ class GatewaySystemMonitor:
                             elif addr.family.name == 'AF_PACKET':  # MAC
                                 interface_info['mac_address'] = addr.address
                     
-                    # Interface-Status
-                    if interface_name in net_stats:
-                        interface_info['is_up'] = net_stats[interface_name].isup
-                        interface_info['speed'] = net_stats[interface_name].speed
-                    
-                    interfaces[interface_name] = interface_info
+                    # Nur Interfaces mit IP-Adresse anzeigen
+                    if interface_info['ip_address']:
+                        interfaces[interface_name] = interface_info
                     
             except Exception as e:
                 logger.warning(f"Fehler beim Sammeln der Interface-Daten: {e}")

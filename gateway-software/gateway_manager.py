@@ -454,25 +454,75 @@ PersistentKeepalive = 25
             }
     
     def get_interface_stats(self):
-        """Netzwerk-Interface-Statistiken"""
+        """Netzwerk-Interface-Statistiken (nur aktive Interfaces)"""
         stats = {}
-        interfaces = ['eth0', 'eth1', 'wg0']
         
-        for iface in interfaces:
-            try:
-                with open(f'/sys/class/net/{iface}/statistics/rx_bytes', 'r') as f:
-                    rx_bytes = int(f.read().strip())
-                with open(f'/sys/class/net/{iface}/statistics/tx_bytes', 'r') as f:
-                    tx_bytes = int(f.read().strip())
-                
-                stats[iface] = {
-                    'rx_bytes': rx_bytes,
-                    'tx_bytes': tx_bytes,
-                    'rx_mb': round(rx_bytes / 1024 / 1024, 2),
-                    'tx_mb': round(tx_bytes / 1024 / 1024, 2)
-                }
-            except Exception:
-                stats[iface] = {'status': 'unavailable'}
+        # Dynamische Interface-Erkennung
+        try:
+            # Alle verfügbaren Interfaces scannen
+            net_dir = '/sys/class/net'
+            if os.path.exists(net_dir):
+                for iface in os.listdir(net_dir):
+                    # Überspringe Loopback-Interface
+                    if iface == 'lo':
+                        continue
+                    
+                    # Prüfe ob Interface aktiv ist
+                    try:
+                        with open(f'{net_dir}/{iface}/operstate', 'r') as f:
+                            state = f.read().strip()
+                        
+                        # Nur aktive Interfaces (up) berücksichtigen
+                        if state not in ['up', 'unknown']:
+                            continue
+                        
+                        # Statistiken lesen
+                        with open(f'{net_dir}/{iface}/statistics/rx_bytes', 'r') as f:
+                            rx_bytes = int(f.read().strip())
+                        with open(f'{net_dir}/{iface}/statistics/tx_bytes', 'r') as f:
+                            tx_bytes = int(f.read().strip())
+                        
+                        # Prüfe ob Interface IP-Adresse hat
+                        has_ip = False
+                        try:
+                            result = subprocess.run(['ip', 'addr', 'show', iface], 
+                                                  capture_output=True, text=True)
+                            if 'inet ' in result.stdout:
+                                has_ip = True
+                        except Exception:
+                            pass
+                        
+                        # Nur Interfaces mit IP-Adresse oder wichtige virtuelle Interfaces
+                        if has_ip or iface.startswith(('wg', 'gateway')):
+                            stats[iface] = {
+                                'rx_bytes': rx_bytes,
+                                'tx_bytes': tx_bytes,
+                                'rx_mb': round(rx_bytes / 1024 / 1024, 2),
+                                'tx_mb': round(tx_bytes / 1024 / 1024, 2),
+                                'state': state
+                            }
+                            
+                    except Exception:
+                        # Interface nicht lesbar - überspringe
+                        continue
+        except Exception:
+            # Fallback: feste Liste für ältere Systeme
+            fallback_interfaces = ['eth0', 'eth1', 'wg0', 'gateway']
+            for iface in fallback_interfaces:
+                try:
+                    with open(f'/sys/class/net/{iface}/statistics/rx_bytes', 'r') as f:
+                        rx_bytes = int(f.read().strip())
+                    with open(f'/sys/class/net/{iface}/statistics/tx_bytes', 'r') as f:
+                        tx_bytes = int(f.read().strip())
+                    
+                    stats[iface] = {
+                        'rx_bytes': rx_bytes,
+                        'tx_bytes': tx_bytes,
+                        'rx_mb': round(rx_bytes / 1024 / 1024, 2),
+                        'tx_mb': round(tx_bytes / 1024 / 1024, 2)
+                    }
+                except Exception:
+                    continue
         
         return stats
     
