@@ -11,6 +11,8 @@ import json
 import time
 import threading
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from datetime import datetime
 import configparser
 from urllib.parse import urlparse
@@ -32,20 +34,40 @@ class WireGuardGateway:
         self.gateway_private_key = None
         self.gateway_public_key = None
         self.is_connected = False
+        self._setup_requests_session()
         self.load_config()
+    
+    def _setup_requests_session(self):
+        """Konfiguriert requests für bessere Performance auf Pi"""
+        # Session wiederverwenden reduziert Connection-Overhead
+        self.session = requests.Session()
+        
+        # Retry-Strategie für instabile Netzwerkverbindungen
+        # Besonders wichtig bei schwachen Internet-Verbindungen
+        retry_strategy = Retry(
+            total=3,  # Max 3 Wiederholungsversuche
+            backoff_factor=1,  # Exponentielles Backoff
+            status_forcelist=[429, 500, 502, 503, 504],  # Server-Fehler wiederholen
+        )
+        
+        # HTTP-Adapter mit Retry-Logik
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
     
     def normalize_url(self, url):
         """Normalisiert URL durch Hinzufügen von http:// wenn kein Schema vorhanden ist"""
         if not url:
             return url
         
-        # Entferne führende/nachfolgende Leerzeichen
+        # Bereinige URL von Leerzeichen
         url = url.strip()
         
-        # Prüfe ob bereits ein Schema vorhanden ist
+        # Parse URL um Schema zu prüfen
         parsed = urlparse(url)
         if not parsed.scheme:
-            # Kein Schema vorhanden, füge http:// hinzu
+            # Kein Schema vorhanden, füge http:// als Standard hinzu
+            # HTTP als Default da VPS oft keine SSL-Zertifikate haben
             url = f"http://{url}"
         
         return url
@@ -53,14 +75,20 @@ class WireGuardGateway:
     def load_config(self):
         """Lade Gateway-Konfiguration"""
         try:
+            # Standard-Pfad für Gateway-Konfiguration
             if os.path.exists('/etc/wireguard-gateway/config.json'):
                 with open('/etc/wireguard-gateway/config.json', 'r') as f:
                     config = json.load(f)
+                    
+                    # Lade VPS-Verbindungsparameter
                     self.vps_endpoint = config.get('vps_endpoint')
                     self.vps_public_key = config.get('vps_public_key')
+                    
                     # VPS API-Endpunkt für automatische Key-Updates
+                    # Normalisiere URL für konsistente Verwendung
                     self.vps_api_url = self.normalize_url(config.get('vps_api_url'))
         except Exception as e:
+            # Konfigurationsfehler sind nicht kritisch beim Start
             print(f"Fehler beim Laden der Konfiguration: {e}")
     
     def fetch_vps_public_key(self, vps_api_url):
@@ -71,8 +99,9 @@ class WireGuardGateway:
             print("🔄 Hole aktuellen VPS Public Key vom Dashboard...")
             print(f"📡 Verbinde zu: {vps_api_url}")
             
-            # API-Endpunkt aufrufen
-            response = requests.get(f"{vps_api_url}/api/vps-info", timeout=10)
+            # API-Endpunkt aufrufen (längerer Timeout für Pi)
+            # 30s Timeout für langsame Internet-Verbindungen
+            response = self.session.get(f"{vps_api_url}/api/vps-info", timeout=30)
             
             if response.status_code == 200:
                 vps_info = response.json()
@@ -96,9 +125,11 @@ class WireGuardGateway:
                 return None
                 
         except requests.exceptions.ConnectTimeout:
-            print("❌ Timeout beim Verbinden zum VPS Dashboard")
+            # Timeout häufig bei schlechter Internet-Verbindung oder überlasteten Pi
+            print("❌ Timeout beim Verbinden zum VPS Dashboard (Netzwerk langsam?)")
         except requests.exceptions.ConnectionError:
-            print("❌ Verbindungsfehler zum VPS Dashboard")
+            # Connection-Fehler: VPS offline, falsche URL, Firewall, etc.
+            print("❌ Verbindungsfehler zum VPS Dashboard (VPS erreichbar?)")
         except Exception as e:
             print(f"❌ Fehler beim Abrufen des VPS Public Key: {e}")
         
@@ -106,6 +137,7 @@ class WireGuardGateway:
     
     def update_vps_public_key(self):
         """Aktualisiere VPS Public Key automatisch"""
+        # Prüfe ob API-URL konfiguriert ist
         if not self.vps_api_url:
             print("⚠️ Keine VPS API URL konfiguriert")
             return False
@@ -118,10 +150,11 @@ class WireGuardGateway:
             if vps_info.get('endpoint'):
                 self.vps_endpoint = vps_info['endpoint']
             
+            # Prüfe ob sich der Key geändert hat
             if old_key != self.vps_public_key:
                 print("🔄 VPS Public Key hat sich geändert - aktualisiere Konfiguration...")
                 
-                # Konfiguration speichern
+                # Konfiguration persistent speichern
                 try:
                     with open('/etc/wireguard-gateway/config.json', 'r') as f:
                         config = json.load(f)
@@ -170,30 +203,18 @@ class WireGuardGateway:
             print(f"Fehler beim Generieren der Keys: {e}")
             return False
     
-    def setup_initial_config(self, vps_api_url, vps_public_key=None):
-        """Initiale Konfiguration des Gateways mit automatischem VPS Key Abruf"""
-        # URL normalisieren
-        self.vps_api_url = self.normalize_url(vps_api_url)
+    def setup_initial_config(self, vps_ip, vps_public_key):
+        """Initiale Konfiguration des Gateways mit manuellen Parametern"""
+        # VPS-Parameter setzen
+        self.vps_public_key = vps_public_key
+        self.vps_endpoint = f"{vps_ip}:51820"
         
-        # Versuche VPS Public Key automatisch abzurufen
-        if not vps_public_key:
-            print("🔄 Kein VPS Public Key angegeben - versuche automatischen Abruf...")
-            vps_info = self.fetch_vps_public_key(self.vps_api_url)
-            if vps_info:
-                self.vps_public_key = vps_info['public_key']
-                self.vps_endpoint = vps_info.get('endpoint', f"{self.vps_api_url.split('://')[1].split(':')[0]}:51820")
-            else:
-                print("❌ Automatischer VPS Public Key Abruf fehlgeschlagen")
-                print("💡 Verwenden Sie das manuelle Setup mit:")
-                print(f"   python3 gateway_manager.py setup {self.vps_api_url} <VPS_PUBLIC_KEY>")
-                print("   (VPS Public Key aus dem VPS Dashboard kopieren)")
-                return False
-        else:
-            # Manuell übergebener Key (Fallback für alte Setup-Methode)
-            self.vps_public_key = vps_public_key
-            # Bestimme Endpoint aus API URL
-            api_host = self.vps_api_url.split('://')[1].split(':')[0]
-            self.vps_endpoint = f"{api_host}:51820"
+        # Optional: API URL für Dashboard-Integration
+        self.vps_api_url = f"http://{vps_ip}:8080"
+        
+        print(f"✅ VPS Public Key gesetzt: {self.vps_public_key[:20]}...")
+        print(f"✅ VPS Endpoint: {self.vps_endpoint}")
+        print(f"✅ VPS Dashboard URL: {self.vps_api_url}")
         
         if not self.generate_keys():
             return False
@@ -574,26 +595,25 @@ if __name__ == "__main__":
         command = sys.argv[1]
         
         if command == "setup":
-            if len(sys.argv) < 3:
+            if len(sys.argv) < 4:
                 print("Usage:")
-                print("  python3 gateway_manager.py setup <VPS_API_URL>")
-                print("  python3 gateway_manager.py setup <VPS_API_URL> <VPS_PUBLIC_KEY>  (optional)")
+                print("  python3 gateway_manager.py setup <VPS_IP> <VPS_PUBLIC_KEY>")
                 print("")
                 print("Beispiel:")
-                print("  python3 gateway_manager.py setup http://192.168.1.100:8080")
-                print("  python3 gateway_manager.py setup https://myvps.example.com:8080")
+                print("  python3 gateway_manager.py setup 192.168.1.100 abcd1234...")
+                print("  python3 gateway_manager.py setup myvps.example.com xyz5678...")
+                print("")
+                print("💡 VPS IP und Public Key aus dem VPS Dashboard kopieren")
                 sys.exit(1)
             
-            vps_api_url = sys.argv[2]
-            vps_public_key = sys.argv[3] if len(sys.argv) > 3 else None
-            
-            # URL normalisieren für Anzeige
-            normalized_url = gateway.normalize_url(vps_api_url)
+            vps_ip = sys.argv[2]
+            vps_public_key = sys.argv[3]
             
             print("🔧 Gateway wird konfiguriert...")
-            print(f"📡 VPS Dashboard API: {normalized_url}")
+            print(f"📡 VPS IP: {vps_ip}")
+            print(f"🔑 VPS Public Key: {vps_public_key[:20]}...")
             
-            if gateway.setup_initial_config(vps_api_url, vps_public_key):
+            if gateway.setup_initial_config(vps_ip, vps_public_key):
                 print("✅ Gateway-Konfiguration erstellt")
                 
                 # Gateway Public Key prominent ausgeben für Copy&Paste
@@ -693,10 +713,12 @@ if __name__ == "__main__":
     else:
         print("WireGuard Gateway Manager")
         print("Verfügbare Befehle:")
-        print("  setup <VPS_API_URL>             - Gateway konfigurieren (automatischer Key-Abruf)")
-        print("  setup <VPS_API_URL> <VPS_KEY>   - Gateway konfigurieren (manueller Key)")
+        print("  setup <VPS_IP> <VPS_PUBLIC_KEY> - Gateway konfigurieren")
         print("  start                           - Gateway starten")
         print("  stop                            - Gateway stoppen") 
         print("  status                          - Status anzeigen")
         print("  update-key                      - VPS Public Key aktualisieren")
         print("  monitor                         - Monitoring starten")
+        print("")
+        print("Beispiel:")
+        print("  python3 gateway_manager.py setup 192.168.1.100 abc123...")
