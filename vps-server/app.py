@@ -39,14 +39,18 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config.update(config.get_flask_config())
 
-# SocketIO für Real-Time Monitoring
-socketio = SocketIO(app, cors_allowed_origins="*")
+# SocketIO für Real-Time Monitoring (optimiert)
+# Längere Ping-Intervalle reduzieren Netzwerk-Traffic und CPU-Last
+socketio = SocketIO(app, cors_allowed_origins="*", 
+                   ping_interval=30, ping_timeout=10)  # Reduzierte Socket-Aktivität
 
-# Rate Limiting
+# Rate Limiting (weniger aggressiv für Pi)
+# Memory-Storage reduziert Abhängigkeiten und ist ressourcenschonender
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
-    default_limits=["100 per hour"]
+    default_limits=["200 per hour"],  # Weniger restriktiv für normale Nutzung
+    storage_uri="memory://"  # In-Memory statt Redis für Pi
 )
 
 class ConfigManager:
@@ -61,7 +65,8 @@ class ConfigManager:
     def get_interface_status(self) -> Dict:
         """Status des WireGuard Interface abfragen mit Caching"""
         cache_key = 'interface_status'
-        cached_result = self._get_cached_result(cache_key, max_age=5)
+        # Längere Cache-Zeit reduziert häufige 'wg show' Aufrufe
+        cached_result = self._get_cached_result(cache_key, max_age=15)  # Längere Cache-Zeit
         
         if cached_result:
             return cached_result
@@ -80,7 +85,8 @@ class ConfigManager:
             error_msg = str(e)
             logger.error(f"Error getting interface status: {e}")
             
-            # Benutzerfreundliche Fehlermeldungen
+            # Benutzerfreundliche Fehlermeldungen für häufige Probleme
+            # Hilft bei der Diagnose ohne technische Details
             if "returned non-zero exit status" in error_msg and "wg show" in error_msg:
                 friendly_msg = "❌ WireGuard Interface noch nicht konfiguriert. Bitte führen Sie die WireGuard-Installation durch."
             elif "No such file or directory" in error_msg:
@@ -88,6 +94,7 @@ class ConfigManager:
             elif "Permission denied" in error_msg:
                 friendly_msg = "❌ Keine Berechtigung für WireGuard-Befehle. Service als root ausführen."
             else:
+                # Fallback für unbekannte Fehler
                 friendly_msg = f"❌ WireGuard-Fehler: {error_msg}"
             
             return {

@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Gateway - Multi-Location Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/minimal-design-system.css') }}">
+    <style>
+        body {
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        #header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 64px;
+            background: rgba(26, 26, 26, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 var(--space-lg);
+        }
+
+        #header h1 {
+            color: var(--accent-primary);
+            font-size: var(--font-size-xl);
+            font-weight: 600;
+        }
+
+        #header .global-stats {
+            display: flex;
+            gap: var(--space-lg);
+            color: var(--text-secondary);
+            font-size: var(--font-size-sm);
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-value {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: var(--accent-primary);
+        }
+
+        /* Main Container */
+        #main-container {
+            margin-top: 64px;
+            padding: var(--space-lg);
+            min-height: calc(100vh - 64px);
+        }
+
+        /* Locations Grid */
+        #locations-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: var(--space-lg);
+            margin-bottom: var(--space-xl);
+        }
+
+        /* Location Card */
+        .location-card {
+            background: var(--surface-bg);
+            border: 2px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            transition: all var(--transition-base);
+            position: relative;
+        }
+
+        .location-card:hover {
+            border-color: var(--accent-primary);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .location-card.connected {
+            border-color: var(--accent-primary);
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .location-card.offline {
+            border-color: var(--accent-danger);
+            background: rgba(255, 68, 68, 0.05);
+        }
+
+        /* Location Header */
+        .location-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-lg);
+            padding-bottom: var(--space-md);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .location-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+        }
+
+        .location-icon {
+            font-size: var(--font-size-xl);
+        }
+
+        .location-name {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* Location Info */
+        .location-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-md);
+            margin-bottom: var(--space-lg);
+            font-size: var(--font-size-sm);
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .info-label {
+            color: var(--text-secondary);
+        }
+
+        .info-value {
+            color: var(--accent-primary);
+            font-weight: 600;
+        }
+
+        /* Devices in Location */
+        .location-devices {
+            margin-bottom: var(--space-lg);
+        }
+
+        .devices-header {
+            font-size: var(--font-size-base);
+            margin-bottom: var(--space-sm);
+            color: var(--accent-primary);
+            font-weight: 600;
+        }
+
+        .device-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-xs);
+        }
+
+        .device-tag {
+            background: var(--surface-bg);
+            border: 1px solid var(--border-color);
+            padding: var(--space-xs) var(--space-sm);
+            border-radius: var(--radius-sm);
+            font-size: var(--font-size-xs);
+            display: flex;
+            align-items: center;
+            gap: var(--space-xs);
+            cursor: pointer;
+            transition: all var(--transition-base);
+            color: var(--text-secondary);
+        }
+
+        .device-tag:hover {
+            background: var(--surface-hover);
+            border-color: var(--accent-primary);
+            color: var(--text-primary);
+            transform: scale(1.05);
+        }
+
+        .device-tag.server {
+            border-color: #9b59b6;
+            color: #9b59b6;
+        }
+
+        .device-tag.printer {
+            border-color: var(--accent-warning);
+            color: var(--accent-warning);
+        }
+
+        .device-tag.storage {
+            border-color: #46a049;
+            color: #46a049;
+        }
+
+        /* Location Actions */
+        .location-actions {
+            display: flex;
+            gap: var(--space-sm);
+        }
+
+        /* Inter-Location Connections */
+        #connections-section {
+            margin-top: var(--space-xl);
+        }
+
+        .section-header {
+            font-size: var(--font-size-2xl);
+            color: var(--accent-primary);
+            margin-bottom: var(--space-lg);
+            padding-bottom: var(--space-sm);
+            border-bottom: 2px solid var(--border-color);
+            font-weight: 600;
+        }
+
+        #connections-canvas {
+            width: 100%;
+            height: 300px;
+            background: var(--surface-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--space-lg);
+        }
+
+        /* Connection Controls */
+        .connection-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--space-lg);
+        }
+
+        .control-panel {
+            background: var(--surface-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+        }
+
+        .control-panel h4 {
+            color: var(--accent-primary);
+            margin-bottom: var(--space-md);
+            font-weight: 600;
+        }
+
+        .connection-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-sm);
+            margin-bottom: var(--space-sm);
+            background: var(--primary-bg);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all var(--transition-base);
+            border: 1px solid transparent;
+        }
+
+        .connection-item:hover {
+            background: var(--surface-hover);
+            border-color: var(--accent-primary);
+        }
+
+        .connection-item.active {
+            background: rgba(0, 255, 136, 0.1);
+            border-color: var(--accent-primary);
+        }
+
+        .connection-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .connection-route {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .connection-details {
+            font-size: var(--font-size-xs);
+            color: var(--text-muted);
+        }
+
+        .connection-status {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+        }
+
+        .connection-status.inactive {
+            background: var(--accent-danger);
+        }
+
+        /* Port Filter Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 2000;
+        }
+
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--surface-bg);
+            border: 2px solid var(--accent-primary);
+            border-radius: var(--radius-lg);
+            padding: var(--space-xl);
+            min-width: 500px;
+            max-width: 90vw;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-lg);
+            padding-bottom: var(--space-md);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-title {
+            font-size: var(--font-size-lg);
+            color: var(--accent-primary);
+            font-weight: 600;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: var(--font-size-xl);
+            cursor: pointer;
+        }
+
+        /* Add Location Button */
+        .add-location-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            background: var(--accent-primary);
+            border: none;
+            border-radius: 50%;
+            color: var(--primary-bg);
+            font-size: var(--font-size-xl);
+            cursor: pointer;
+            box-shadow: var(--shadow-glow);
+            transition: all var(--transition-base);
+            z-index: 1000;
+        }
+
+        .add-location-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 25px rgba(0, 255, 136, 0.5);
+        }
+
+        /* Mobile Back Button */
+        .mobile-back-btn {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+        }
+
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            #header {
+                height: 56px;
+                padding: 0 var(--space-md);
+            }
+            
+            #header h1 {
+                font-size: var(--font-size-lg);
+            }
+            
+            #header .global-stats {
+                gap: var(--space-md);
+                font-size: var(--font-size-xs);
+            }
+            
+            .stat-value {
+                font-size: var(--font-size-base);
+            }
+            
+            #main-container {
+                margin-top: 56px;
+                padding: var(--space-md);
+            }
+            
+            #locations-grid {
+                grid-template-columns: 1fr;
+                gap: var(--space-lg);
+            }
+            
+            .location-card {
+                padding: var(--space-lg);
+            }
+            
+            .location-info {
+                grid-template-columns: 1fr;
+                gap: var(--space-sm);
+            }
+            
+            .device-list {
+                gap: var(--space-xs);
+            }
+            
+            .device-tag {
+                font-size: 11px;
+                padding: var(--space-xs);
+            }
+            
+            .location-actions {
+                flex-direction: column;
+                gap: var(--space-sm);
+            }
+            
+            #connections-canvas {
+                height: 200px;
+            }
+            
+            .connection-controls {
+                grid-template-columns: 1fr;
+                gap: var(--space-md);
+            }
+            
+            .control-panel {
+                padding: var(--space-md);
+            }
+            
+            .add-location-btn {
+                width: 50px;
+                height: 50px;
+                bottom: 20px;
+                right: 20px;
+                font-size: var(--font-size-lg);
+            }
+            
+            .modal-content {
+                min-width: 90vw;
+                max-width: 90vw;
+                padding: var(--space-lg);
+            }
+            
+            .mobile-back-btn {
+                display: block !important;
+                top: 10px;
+                right: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>🌐 Multi-Location VPN Manager</h1>
+        <div class="global-stats">
+            <div class="stat-item">
+                <div class="stat-value" id="total-locations">0</div>
+                <div>Locations</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="active-connections">0</div>
+                <div>Connections</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="total-devices">0</div>
+                <div>Devices</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="total-traffic">0 MB/s</div>
+                <div>Traffic</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-container">
+        <!-- Locations Grid -->
+        <div id="locations-grid">
+            <!-- Locations werden hier dynamisch eingefügt -->
+        </div>
+
+        <!-- Inter-Location Connections -->
+        <div id="connections-section">
+            <h2 class="section-header">🔗 Inter-Location Connections</h2>
+            
+            <!-- Visual Connection Map -->
+            <canvas id="connections-canvas"></canvas>
+            
+            <!-- Connection Controls -->
+            <div class="connection-controls">
+                <div class="control-panel">
+                    <h4>🔗 Active Routes</h4>
+                    <div id="active-routes">
+                        <!-- Aktive Verbindungen werden hier angezeigt -->
+                    </div>
+                </div>
+                
+                <div class="control-panel">
+                    <h4>🚦 Traffic Policies</h4>
+                    <div id="traffic-policies">
+                        <!-- Traffic-Regeln werden hier angezeigt -->
+                    </div>
+                </div>
+                
+                <div class="control-panel">
+                    <h4>📊 Connection Stats</h4>
+                    <div id="connection-stats">
+                        <!-- Verbindungsstatistiken -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Location Button -->
+    <button class="add-location-btn" onclick="addNewLocation()">+</button>
+    
+    <!-- Mobile Back Button -->
+    <button class="mobile-back-btn btn btn-primary" onclick="goBack()" title="Zurück zum Dashboard">
+        ←
+    </button>
+
+    <!-- Port Filter Modal -->
+    <div id="port-filter-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">🚦 Connection Policy</h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modal-body">
+                <!-- Modal-Inhalt wird dynamisch geladen -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Globale Variablen
+        let locations = [];
+        let connections = [];
+        let selectedConnection = null;
+
+        // Initialisierung
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Multi-Location Manager loading...');
+            initializeDefaultLocations();
+            initializeConnections();
+            setupCanvas();
+            updateGlobalStats();
+        });
+
+        function initializeDefaultLocations() {
+            // Standard Locations
+            const defaultLocations = [
+                {
+                    id: 'loc-1',
+                    name: 'Hauptstandort',
+                    icon: '🏢',
+                    status: 'online',
+                    ip: '10.1.0.1',
+                    gateway: '192.168.1.1',
+                    devices: [
+                        {name: 'Web Server', type: 'server', ip: '10.1.0.100'},
+                        {name: 'Database', type: 'server', ip: '10.1.0.101'},
+                        {name: 'Backup Server', type: 'storage', ip: '10.1.0.102'},
+                        {name: 'Drucker HP', type: 'printer', ip: '10.1.0.200'}
+                    ],
+                    clients: 12,
+                    bandwidth: '100 Mbps',
+                    latency: '5ms'
+                },
+                {
+                    id: 'loc-2',
+                    name: 'Home Office',
+                    icon: '🏠',
+                    status: 'online',
+                    ip: '10.2.0.1',
+                    gateway: '192.168.0.1',
+                    devices: [
+                        {name: 'NAS Synology', type: 'storage', ip: '10.2.0.100'},
+                        {name: 'Media Server', type: 'server', ip: '10.2.0.101'},
+                        {name: 'IoT Gateway', type: 'device', ip: '10.2.0.102'}
+                    ],
+                    clients: 8,
+                    bandwidth: '50 Mbps',
+                    latency: '12ms'
+                },
+                {
+                    id: 'loc-3',
+                    name: 'Außenstelle',
+                    icon: '🏭',
+                    status: 'connecting',
+                    ip: '10.3.0.1',
+                    gateway: '192.168.10.1',
+                    devices: [
+                        {name: 'Terminal Server', type: 'server', ip: '10.3.0.100'},
+                        {name: 'Kassensystem', type: 'device', ip: '10.3.0.200'},
+                        {name: 'Drucker Canon', type: 'printer', ip: '10.3.0.201'}
+                    ],
+                    clients: 5,
+                    bandwidth: '25 Mbps',
+                    latency: '25ms'
+                },
+                {
+                    id: 'loc-4',
+                    name: 'Mobile Team',
+                    icon: '📱',
+                    status: 'offline',
+                    ip: '10.4.0.1',
+                    gateway: 'DHCP',
+                    devices: [
+                        {name: 'Laptop 1', type: 'device', ip: '10.4.0.100'},
+                        {name: 'Laptop 2', type: 'device', ip: '10.4.0.101'},
+                        {name: 'Mobile Hotspot', type: 'device', ip: '10.4.0.200'}
+                    ],
+                    clients: 3,
+                    bandwidth: '20 Mbps',
+                    latency: '45ms'
+                }
+            ];
+
+            locations = defaultLocations;
+            renderLocations();
+        }
+
+        function renderLocations() {
+            const grid = document.getElementById('locations-grid');
+            grid.innerHTML = '';
+
+            locations.forEach(location => {
+                const card = createLocationCard(location);
+                grid.appendChild(card);
+            });
+        }
+
+        function createLocationCard(location) {
+            const card = document.createElement('div');
+            card.className = `location-card ${location.status}`;
+            card.id = location.id;
+
+            const statusClass = location.status === 'online' ? 'status-online' : 
+                              location.status === 'offline' ? 'status-offline' : 'status-warning';
+
+            card.innerHTML = `
+                <div class="location-header">
+                    <div class="location-title">
+                        <span class="location-icon">${location.icon}</span>
+                        <span class="location-name">${location.name}</span>
+                    </div>
+                    <span class="status-indicator ${statusClass}">${location.status.toUpperCase()}</span>
+                </div>
+                
+                <div class="location-info">
+                    <div class="info-item">
+                        <span class="info-label">VPN IP:</span>
+                        <span class="info-value">${location.ip}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Gateway:</span>
+                        <span class="info-value">${location.gateway}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Clients:</span>
+                        <span class="info-value">${location.clients}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Bandwidth:</span>
+                        <span class="info-value">${location.bandwidth}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Latency:</span>
+                        <span class="info-value">${location.latency}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Devices:</span>
+                        <span class="info-value">${location.devices.length}</span>
+                    </div>
+                </div>
+                
+                <div class="location-devices">
+                    <div class="devices-header">📱 Devices:</div>
+                    <div class="device-list">
+                        ${location.devices.map(device => 
+                            `<span class="device-tag ${device.type}" onclick="showDeviceDetails('${location.id}', '${device.name}')">
+                                ${getDeviceIcon(device.type)} ${device.name}
+                            </span>`
+                        ).join('')}
+                    </div>
+                </div>
+                
+                <div class="location-actions">
+                    <button class="btn ${location.status === 'online' ? 'btn-ghost' : 'btn-primary'}" onclick="toggleConnection('${location.id}')">
+                        ${location.status === 'online' ? 'Disconnect' : 'Connect'}
+                    </button>
+                    <button class="btn btn-secondary" onclick="configureLocation('${location.id}')">
+                        Configure
+                    </button>
+                    <button class="btn btn-secondary" onclick="manageDevices('${location.id}')">
+                        Manage
+                    </button>
+                </div>
+            `;
+
+            return card;
+        }
+
+        function getDeviceIcon(type) {
+            const icons = {
+                server: '🖥️',
+                storage: '🗄️',
+                printer: '🖨️',
+                device: '📱'
+            };
+            return icons[type] || '📱';
+        }
+
+        function initializeConnections() {
+            // Standard Inter-Location Connections
+            connections = [
+                {
+                    id: 'conn-1',
+                    from: 'loc-1',
+                    to: 'loc-2',
+                    status: 'active',
+                    bandwidth: '45 Mbps',
+                    policy: 'allow-all',
+                    ports: ['80', '443', '22', '3389']
+                },
+                {
+                    id: 'conn-2', 
+                    from: 'loc-1',
+                    to: 'loc-3',
+                    status: 'active',
+                    bandwidth: '20 Mbps',
+                    policy: 'restricted',
+                    ports: ['80', '443', '22']
+                },
+                {
+                    id: 'conn-3',
+                    from: 'loc-2',
+                    to: 'loc-3',
+                    status: 'inactive',
+                    bandwidth: '0 Mbps',
+                    policy: 'blocked',
+                    ports: []
+                }
+            ];
+
+            renderConnections();
+        }
+
+        function renderConnections() {
+            const activeRoutes = document.getElementById('active-routes');
+            activeRoutes.innerHTML = '';
+
+            connections.forEach(conn => {
+                const fromLoc = locations.find(l => l.id === conn.from);
+                const toLoc = locations.find(l => l.id === conn.to);
+                
+                if (fromLoc && toLoc) {
+                    const connElement = document.createElement('div');
+                    connElement.className = `connection-item ${conn.status}`;
+                    connElement.onclick = () => showConnectionPolicy(conn.id);
+                    
+                    connElement.innerHTML = `
+                        <div class="connection-info">
+                            <div class="connection-route">${fromLoc.name} → ${toLoc.name}</div>
+                            <div class="connection-details">${conn.bandwidth} • ${conn.policy}</div>
+                        </div>
+                        <div class="connection-status ${conn.status}"></div>
+                    `;
+                    
+                    activeRoutes.appendChild(connElement);
+                }
+            });
+        }
+
+        function showConnectionPolicy(connectionId) {
+            const connection = connections.find(c => c.id === connectionId);
+            if (!connection) return;
+
+            const fromLoc = locations.find(l => l.id === connection.from);
+            const toLoc = locations.find(l => l.id === connection.to);
+
+            const modalBody = document.getElementById('modal-body');
+            modalBody.innerHTML = `
+                <h4>🔗 Route: ${fromLoc.name} → ${toLoc.name}</h4>
+                <br>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <h5>📊 Connection Info:</h5>
+                        <p><strong>Status:</strong> ${connection.status}</p>
+                        <p><strong>Bandwidth:</strong> ${connection.bandwidth}</p>
+                        <p><strong>Policy:</strong> ${connection.policy}</p>
+                        <br>
+                        <h5>🚦 Traffic Policy:</h5>
+                        <label style="display: block; margin: 5px 0;">
+                            <input type="radio" name="policy" value="allow-all" ${connection.policy === 'allow-all' ? 'checked' : ''}> 
+                            Allow All Traffic
+                        </label>
+                        <label style="display: block; margin: 5px 0;">
+                            <input type="radio" name="policy" value="restricted" ${connection.policy === 'restricted' ? 'checked' : ''}> 
+                            Port-based Filtering
+                        </label>
+                        <label style="display: block; margin: 5px 0;">
+                            <input type="radio" name="policy" value="blocked" ${connection.policy === 'blocked' ? 'checked' : ''}> 
+                            Block All Traffic
+                        </label>
+                    </div>
+                    <div>
+                        <h5>🔌 Allowed Ports:</h5>
+                        <div style="display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0;">
+                            ${connection.ports.map(port => 
+                                `<span class="status-indicator status-online" style="font-size: 12px;">${port}</span>`
+                            ).join('')}
+                        </div>
+                        <input type="text" placeholder="Add port (e.g., 8080)" style="width: 100%; padding: 8px; margin: 5px 0; background: var(--surface-bg); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm);">
+                        <br><br>
+                        <h5>📈 Quick Policies:</h5>
+                        <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                            <button onclick="applyPolicy('web')" class="btn btn-sm btn-secondary">Web (80,443)</button>
+                            <button onclick="applyPolicy('ssh')" class="btn btn-sm btn-secondary">SSH (22)</button>
+                            <button onclick="applyPolicy('rdp')" class="btn btn-sm btn-secondary">RDP (3389)</button>
+                        </div>
+                    </div>
+                </div>
+                <br>
+                <div style="text-align: right;">
+                    <button onclick="saveConnectionPolicy('${connectionId}')" class="btn btn-primary">Save Policy</button>
+                </div>
+            `;
+
+            document.getElementById('port-filter-modal').style.display = 'block';
+        }
+
+        function setupCanvas() {
+            const canvas = document.getElementById('connections-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Canvas-Größe setzen
+            canvas.width = canvas.offsetWidth;
+            canvas.height = 300;
+            
+            drawConnectionMap(ctx);
+        }
+
+        function drawConnectionMap(ctx) {
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            
+            // Zeichne Locations als Nodes
+            const nodePositions = {};
+            const nodeRadius = 30;
+            const centerY = ctx.canvas.height / 2;
+            
+            locations.forEach((location, index) => {
+                const x = 100 + (index * (ctx.canvas.width - 200) / (locations.length - 1));
+                const y = centerY + (Math.sin(index * 0.8) * 50); // Leichte Verschiebung für bessere Optik
+                
+                nodePositions[location.id] = {x, y};
+                
+                // Node zeichnen
+                ctx.beginPath();
+                ctx.arc(x, y, nodeRadius, 0, 2 * Math.PI);
+                ctx.fillStyle = location.status === 'online' ? '#00ff88' : 
+                               location.status === 'offline' ? '#e74c3c' : '#f39c12';
+                ctx.fill();
+                
+                // Location Name
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(location.name, x, y + nodeRadius + 15);
+                
+                // Location Icon
+                ctx.font = '20px sans-serif';
+                ctx.fillText(location.icon, x, y + 5);
+            });
+            
+            // Zeichne Verbindungen
+            connections.forEach(conn => {
+                if (conn.status === 'active') {
+                    const fromPos = nodePositions[conn.from];
+                    const toPos = nodePositions[conn.to];
+                    
+                    if (fromPos && toPos) {
+                        ctx.beginPath();
+                        ctx.moveTo(fromPos.x, fromPos.y);
+                        ctx.lineTo(toPos.x, toPos.y);
+                        ctx.strokeStyle = '#00ff88';
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+                        
+                        // Pfeil zeichnen
+                        const angle = Math.atan2(toPos.y - fromPos.y, toPos.x - fromPos.x);
+                        const arrowLength = 15;
+                        const arrowX = toPos.x - Math.cos(angle) * nodeRadius;
+                        const arrowY = toPos.y - Math.sin(angle) * nodeRadius;
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(arrowX, arrowY);
+                        ctx.lineTo(
+                            arrowX - arrowLength * Math.cos(angle - 0.5),
+                            arrowY - arrowLength * Math.sin(angle - 0.5)
+                        );
+                        ctx.moveTo(arrowX, arrowY);
+                        ctx.lineTo(
+                            arrowX - arrowLength * Math.cos(angle + 0.5),
+                            arrowY - arrowLength * Math.sin(angle + 0.5)
+                        );
+                        ctx.stroke();
+                    }
+                }
+            });
+        }
+
+        function updateGlobalStats() {
+            document.getElementById('total-locations').textContent = locations.length;
+            document.getElementById('active-connections').textContent = connections.filter(c => c.status === 'active').length;
+            document.getElementById('total-devices').textContent = locations.reduce((sum, loc) => sum + loc.devices.length, 0);
+            
+            const totalBandwidth = connections
+                .filter(c => c.status === 'active')
+                .reduce((sum, c) => sum + parseFloat(c.bandwidth), 0);
+            document.getElementById('total-traffic').textContent = `${totalBandwidth.toFixed(1)} MB/s`;
+        }
+
+        // Event Handlers
+        function showDeviceDetails(locationId, deviceName) {
+            const location = locations.find(l => l.id === locationId);
+            const device = location.devices.find(d => d.name === deviceName);
+            
+            alert(`Device: ${device.name}\nType: ${device.type}\nIP: ${device.ip}\nLocation: ${location.name}`);
+        }
+
+        function toggleConnection(locationId) {
+            const location = locations.find(l => l.id === locationId);
+            location.status = location.status === 'online' ? 'offline' : 'online';
+            renderLocations();
+            updateGlobalStats();
+        }
+
+        function configureLocation(locationId) {
+            alert(`Configure Location: ${locationId}\n\nHier würde die Konfigurationsoberfläche für WireGuard, Routing, etc. öffnen.`);
+        }
+
+        function manageDevices(locationId) {
+            alert(`Manage Devices for Location: ${locationId}\n\nHier würde die Geräteverwaltung öffnen.`);
+        }
+
+        function addNewLocation() {
+            const name = prompt('Location Name:');
+            if (name) {
+                const newLocation = {
+                    id: `loc-${locations.length + 1}`,
+                    name: name,
+                    icon: '🏢',
+                    status: 'offline',
+                    ip: `10.${locations.length + 1}.0.1`,
+                    gateway: '192.168.1.1',
+                    devices: [],
+                    clients: 0,
+                    bandwidth: '0 Mbps',
+                    latency: '0ms'
+                };
+                
+                locations.push(newLocation);
+                renderLocations();
+                updateGlobalStats();
+                setupCanvas();
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('port-filter-modal').style.display = 'none';
+        }
+
+        function applyPolicy(policyType) {
+            const policies = {
+                web: ['80', '443'],
+                ssh: ['22'],
+                rdp: ['3389']
+            };
+            
+            alert(`Applied ${policyType} policy: ${policies[policyType].join(', ')}`);
+        }
+
+        function saveConnectionPolicy(connectionId) {
+            alert(`Connection policy saved for: ${connectionId}`);
+            closeModal();
+        }
+
+        // Auto-Update Canvas
+        setInterval(() => {
+            setupCanvas();
+        }, 5000);
+        
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.location.href = '/';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -149,12 +149,12 @@ class MonitoringConfig:
     """Monitoring und Logging-Konfiguration"""
     LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
     LOG_FILE: str = os.getenv('LOG_FILE', '/var/log/wireguard-gateway/app.log')
-    LOG_MAX_BYTES: int = int(os.getenv('LOG_MAX_BYTES', '10485760'))  # 10MB
-    LOG_BACKUP_COUNT: int = int(os.getenv('LOG_BACKUP_COUNT', '5'))
+    LOG_MAX_BYTES: int = int(os.getenv('LOG_MAX_BYTES', '5242880'))  # 5MB (reduziert für Pi)
+    LOG_BACKUP_COUNT: int = int(os.getenv('LOG_BACKUP_COUNT', '3'))  # Weniger Backups
     
     # Monitoring
     MONITORING_ENABLED: bool = os.getenv('MONITORING_ENABLED', 'True').lower() == 'true'
-    MONITORING_INTERVAL: int = int(os.getenv('MONITORING_INTERVAL', '30'))  # Sekunden
+    MONITORING_INTERVAL: int = int(os.getenv('MONITORING_INTERVAL', '60'))  # Längere Intervalle für Pi
     ALERT_THRESHOLDS: Dict[str, float] = field(default_factory=lambda: {
         'cpu_percent': float(os.getenv('ALERT_CPU_THRESHOLD', '90.0')),
         'memory_percent': float(os.getenv('ALERT_MEMORY_THRESHOLD', '90.0')),
@@ -229,10 +229,16 @@ class Config:
             self.monitoring = MonitoringConfig()
             self.app = ApplicationConfig()
             
+            # Hardware-Erkennung für adaptive Konfiguration
+            # Muss vor Setup erfolgen um Einstellungen anzupassen
+            self._detect_hardware()
+            
             # Kompatibilitäts-Aliases für bestehenden Code
+            # Ermöglicht schrittweise Migration zu neuer Struktur
             self._setup_aliases()
             
             # Konfiguration validieren
+            # Prüft alle Einstellungen auf Konsistenz
             self._validate_configuration()
             
             logger.info("Konfiguration erfolgreich geladen und validiert")
@@ -277,9 +283,56 @@ class Config:
         # Generierte URLs
         self.INSTALL_SCRIPT_URL = f"https://raw.githubusercontent.com/{self.GITHUB_REPO}/main/gateway-pc/quick-install.sh"
     
+    def _detect_hardware(self):
+        """Erkennt Hardware und passt Konfiguration an"""
+        # Initialisiere Hardware-Flags
+        self.is_raspberry_pi = False
+        self.is_low_memory = False
+        
+        try:
+            # Raspberry Pi Erkennung über CPU-Informationen
+            # /proc/cpuinfo enthält Hardware-spezifische Informationen
+            with open('/proc/cpuinfo', 'r') as f:
+                content = f.read().lower()
+                # Pi hat charakteristische Bezeichnungen in cpuinfo
+                if 'raspberry pi' in content or 'bcm' in content:
+                    self.is_raspberry_pi = True
+                    logger.info("Raspberry Pi erkannt - verwende ressourcenschonende Einstellungen")
+            
+            # Memory Erkennung für adaptive Konfiguration
+            # /proc/meminfo enthält detaillierte Speicher-Informationen
+            with open('/proc/meminfo', 'r') as f:
+                for line in f:
+                    if line.startswith('MemTotal:'):
+                        # Parse Speichergröße (in kB)
+                        mem_kb = int(line.split()[1])
+                        mem_mb = mem_kb // 1024
+                        
+                        # Systeme mit <1GB RAM brauchen aggressive Optimierung
+                        if mem_mb < 1024:  # Weniger als 1GB RAM
+                            self.is_low_memory = True
+                            logger.info(f"Wenig Arbeitsspeicher erkannt ({mem_mb}MB) - optimiere Konfiguration")
+                        break
+            
+            # Hardware-spezifische Anpassungen
+            # Reduziere Ressourcenverbrauch auf schwächeren Systemen
+            if self.is_raspberry_pi or self.is_low_memory:
+                # Längere Monitoring-Intervalle = weniger CPU-Last
+                self.monitoring.MONITORING_INTERVAL = max(self.monitoring.MONITORING_INTERVAL, 120)
+                
+                # Kleinere Log-Dateien = weniger Disk-I/O
+                self.monitoring.LOG_MAX_BYTES = min(self.monitoring.LOG_MAX_BYTES, 2097152)  # Max 2MB
+                
+                # Weniger Log-Backups = weniger Speicherplatz
+                self.monitoring.LOG_BACKUP_COUNT = 2
+                
+        except Exception as e:
+            logger.debug(f"Hardware-Erkennung fehlgeschlagen: {e}")
+    
     def _validate_configuration(self):
         """Übergreifende Konfigurationsvalidierung"""
-        # Überprüfe ob alle erforderlichen Verzeichnisse beschreibbar sind
+        # Prüfe kritische Verzeichnisse auf Zugriff
+        # Verhindert spätere Laufzeit-Fehler
         test_dirs = [self.storage.DATA_DIR, os.path.dirname(self.monitoring.LOG_FILE)]
         
         for test_dir in test_dirs:

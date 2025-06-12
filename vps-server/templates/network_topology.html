@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Gateway - Network Topology</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/minimal-design-system.css') }}">
+    <style>
+        body {
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        #topology-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: var(--primary-bg);
+            overflow: hidden;
+        }
+
+        #world-map {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            height: 60%;
+            background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500"><path d="M150,200 Q200,150 300,180 T500,200 Q600,220 700,200 T900,180" fill="none" stroke="%23333" stroke-width="2" opacity="0.3"/><circle cx="200" cy="180" r="3" fill="%23666"/><circle cx="400" cy="200" r="3" fill="%23666"/><circle cx="600" cy="190" r="3" fill="%23666"/><circle cx="800" cy="180" r="3" fill="%23666"/></svg>');
+            background-repeat: no-repeat;
+            background-size: contain;
+            background-position: center;
+            opacity: 0.1;
+            pointer-events: none;
+        }
+
+        #connection-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .network-node {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: move;
+            user-select: none;
+            transition: all var(--transition-base);
+            z-index: 10;
+            border: 3px solid transparent;
+            box-shadow: var(--shadow-md);
+        }
+
+        .network-node:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .network-node.dragging {
+            transform: scale(1.2);
+            z-index: 100;
+        }
+
+        .network-node.connectable {
+            border-color: var(--accent-primary) !important;
+            animation: pulse 1s infinite;
+        }
+
+        .server-node {
+            background: linear-gradient(135deg, var(--accent-secondary), #357abd);
+            border-color: var(--accent-secondary);
+        }
+
+        .client-node {
+            background: linear-gradient(135deg, var(--accent-warning), #e67e22);
+            border-color: var(--accent-warning);
+        }
+
+        .gateway-node {
+            background: linear-gradient(135deg, var(--accent-primary), #00cc6a);
+            border-color: var(--accent-primary);
+        }
+
+        .vps-node {
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            border-color: #9b59b6;
+        }
+
+        .network-node .icon {
+            font-size: 24px;
+            color: white;
+        }
+
+        .node-label {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: var(--font-size-xs);
+            background: var(--surface-bg);
+            color: var(--text-secondary);
+            padding: var(--space-xs) var(--space-sm);
+            border-radius: var(--radius-sm);
+            white-space: nowrap;
+            pointer-events: none;
+            border: 1px solid var(--border-color);
+        }
+
+        #control-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            min-width: 200px;
+        }
+
+        #connection-info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            max-width: 300px;
+        }
+
+        #connection-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .connection-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-sm) 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .connection-item:last-child {
+            border-bottom: none;
+        }
+
+        #status-indicator {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+        }
+
+        .mobile-back-btn {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 240px;
+            z-index: 1001;
+        }
+
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            #control-panel {
+                position: fixed !important;
+                bottom: 10px !important;
+                right: 10px !important;
+                left: 10px !important;
+                max-height: 50vh !important;
+                overflow-y: auto !important;
+            }
+            
+            #connection-info {
+                position: fixed !important;
+                top: 70px !important;
+                left: 10px !important;
+                right: 10px !important;
+                bottom: auto !important;
+                max-height: 30vh !important;
+                overflow-y: auto !important;
+            }
+            
+            #status-indicator {
+                position: fixed !important;
+                top: 10px !important;
+                left: 10px !important;
+                right: 10px !important;
+                font-size: 14px !important;
+            }
+            
+            .network-node {
+                width: 60px !important;
+                height: 60px !important;
+                font-size: 18px !important;
+            }
+            
+            .node-label {
+                font-size: 10px !important;
+                bottom: -20px !important;
+            }
+            
+            .mobile-back-btn {
+                display: block !important;
+                top: 10px !important;
+                right: 10px !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="topology-container">
+        <!-- Weltkarte Hintergrund -->
+        <div id="world-map"></div>
+        
+        <!-- Canvas für Verbindungslinien -->
+        <canvas id="connection-canvas"></canvas>
+        
+        <!-- Status Anzeige -->
+        <div id="status-indicator" class="card card-compact">
+            <div class="status-indicator status-online">🜢 Network Topology - Interactive Mode</div>
+        </div>
+        
+        <!-- Mobile Back Button -->
+        <button class="mobile-back-btn btn btn-primary" onclick="goBack()" title="Zurück zum Dashboard">
+            ←
+        </button>
+
+        <!-- Control Panel -->
+        <div id="control-panel" class="card">
+            <div class="card-header">
+                <h3 class="card-title text-accent">🎛️ Controls</h3>
+            </div>
+            <div class="card-body">
+                <div class="flex flex-col gap-sm">
+                    <button class="btn btn-secondary" onclick="toggleConnectionMode()">🔗 Connection Mode</button>
+                    <button class="btn btn-secondary" onclick="addServer()">🖥️ Add Server</button>
+                    <button class="btn btn-secondary" onclick="addClient()">💻 Add Client</button>
+                    <button class="btn btn-secondary" onclick="addGateway()">🌐 Add Gateway</button>
+                    <button class="btn btn-ghost" onclick="clearAll()">🗑️ Clear All</button>
+                    <button class="btn btn-primary" onclick="exportTopology()">💾 Export</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Info Panel -->
+        <div id="connection-info" class="card">
+            <div class="card-header">
+                <h4 class="card-title text-accent">🔗 Active Connections</h4>
+            </div>
+            <div class="card-body">
+                <div id="connection-list">
+                    <div class="text-muted italic">No connections yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Globale Variablen
+        let nodes = [];
+        let connections = [];
+        let connectionMode = false;
+        let selectedNode = null;
+        let isDragging = false;
+        let canvas, ctx;
+        let nodeCounter = 0;
+
+        // Initialisierung
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, initializing topology...');
+            
+            canvas = document.getElementById('connection-canvas');
+            ctx = canvas.getContext('2d');
+            
+            if (!canvas || !ctx) {
+                console.error('Canvas not found!');
+                return;
+            }
+            
+            // Canvas-Größe anpassen
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            // Initiale Nodes erstellen
+            createInitialTopology();
+            
+            // Event Listeners
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            
+            // Regelmäßiges Neuzeichnen der Verbindungen
+            setInterval(drawConnections, 50);
+            
+            console.log('Topology initialized successfully');
+        });
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function createInitialTopology() {
+            // VPS Server (zentral)
+            addNode('vps', 'VPS Server', window.innerWidth / 2, window.innerHeight / 2);
+            
+            // Gateway (links)
+            addNode('gateway', 'Gateway Pi', window.innerWidth * 0.3, window.innerHeight / 2);
+            
+            // Clients (verteilt)
+            addNode('client', 'Client 1', window.innerWidth * 0.15, window.innerHeight * 0.3);
+            addNode('client', 'Client 2', window.innerWidth * 0.15, window.innerHeight * 0.7);
+            
+            // Server (rechts)
+            addNode('server', 'Web Server', window.innerWidth * 0.8, window.innerHeight * 0.4);
+            addNode('server', 'DB Server', window.innerWidth * 0.8, window.innerHeight * 0.6);
+        }
+
+        function addNode(type, label, x, y) {
+            nodeCounter++;
+            const node = document.createElement('div');
+            node.className = `network-node ${type}-node`;
+            node.id = `node-${nodeCounter}`;
+            node.style.left = (x - 40) + 'px';
+            node.style.top = (y - 40) + 'px';
+            
+            // Icon basierend auf Typ
+            let icon = '';
+            switch(type) {
+                case 'server': icon = '🖥️'; break;
+                case 'client': icon = '💻'; break;
+                case 'gateway': icon = '🌐'; break;
+                case 'vps': icon = '☁️'; break;
+            }
+            
+            node.innerHTML = `
+                <div class="icon">${icon}</div>
+                <div class="node-label">${label || type}</div>
+            `;
+            
+            // Event Listeners für Drag & Drop
+            node.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                console.log('Node clicked:', node.id, 'Connection mode:', connectionMode);
+                if (connectionMode) {
+                    handleConnectionClick(node);
+                } else {
+                    startDrag(node, e);
+                }
+            });
+            
+            document.getElementById('topology-container').appendChild(node);
+            
+            // Node zur Liste hinzufügen
+            nodes.push({
+                id: node.id,
+                element: node,
+                type: type,
+                label: label || type,
+                x: x,
+                y: y
+            });
+        }
+
+        function startDrag(node, e) {
+            isDragging = true;
+            selectedNode = node;
+            node.classList.add('dragging');
+            
+            const rect = node.getBoundingClientRect();
+            const offsetX = e.clientX - rect.left - 40;
+            const offsetY = e.clientY - rect.top - 40;
+            
+            node.offsetX = offsetX;
+            node.offsetY = offsetY;
+        }
+
+        function handleMouseMove(e) {
+            if (isDragging && selectedNode) {
+                const x = e.clientX - selectedNode.offsetX;
+                const y = e.clientY - selectedNode.offsetY;
+                
+                selectedNode.style.left = x + 'px';
+                selectedNode.style.top = y + 'px';
+                
+                // Node-Position in der Liste aktualisieren
+                const nodeData = nodes.find(n => n.id === selectedNode.id);
+                if (nodeData) {
+                    nodeData.x = x + 40;
+                    nodeData.y = y + 40;
+                }
+            }
+        }
+
+        function handleMouseUp() {
+            if (isDragging && selectedNode) {
+                selectedNode.classList.remove('dragging');
+                selectedNode = null;
+                isDragging = false;
+            }
+        }
+
+        function toggleConnectionMode() {
+            connectionMode = !connectionMode;
+            const button = event.target;
+            console.log('Connection mode toggled:', connectionMode);
+            
+            if (connectionMode) {
+                button.classList.add('btn-primary');
+                button.classList.remove('btn-secondary');
+                button.textContent = '🔗 Exit Connection Mode';
+                document.getElementById('status-indicator').innerHTML = 
+                    '<div class="status-indicator status-warning">🔗 Connection Mode - Click nodes to connect</div>';
+                
+                // Alle Nodes als verbindbar markieren
+                nodes.forEach(node => {
+                    node.element.classList.add('connectable');
+                });
+            } else {
+                button.classList.remove('btn-primary');
+                button.classList.add('btn-secondary');
+                button.textContent = '🔗 Connection Mode';
+                document.getElementById('status-indicator').innerHTML = 
+                    '<div class="status-indicator status-online">🜢 Network Topology - Interactive Mode</div>';
+                
+                // Verbindbar-Markierung entfernen
+                nodes.forEach(node => {
+                    node.element.classList.remove('connectable');
+                });
+                
+                selectedNode = null;
+            }
+        }
+
+        function handleConnectionClick(nodeElement) {
+            if (!selectedNode) {
+                selectedNode = nodeElement;
+                nodeElement.style.borderColor = 'var(--accent-primary)';
+                nodeElement.style.borderWidth = '4px';
+                console.log('Node selected:', nodeElement.id);
+            } else if (selectedNode === nodeElement) {
+                // Deselektieren
+                nodeElement.style.borderColor = '';
+                nodeElement.style.borderWidth = '3px';
+                selectedNode = null;
+                console.log('Node deselected');
+            } else {
+                // Verbindung erstellen
+                console.log('Creating connection between:', selectedNode.id, 'and', nodeElement.id);
+                createConnection(selectedNode, nodeElement);
+                
+                // Beide Nodes zurücksetzen
+                selectedNode.style.borderColor = '';
+                selectedNode.style.borderWidth = '3px';
+                nodeElement.style.borderColor = '';
+                nodeElement.style.borderWidth = '3px';
+                selectedNode = null;
+            }
+        }
+
+        function createConnection(node1, node2) {
+            console.log('Creating connection from', node1.id, 'to', node2.id);
+            const connection = {
+                id: `conn-${connections.length + 1}`,
+                from: node1.id,
+                to: node2.id,
+                type: 'tunnel',
+                status: 'active'
+            };
+            
+            connections.push(connection);
+            console.log('Connection created:', connection);
+            updateConnectionList();
+        }
+
+        function drawConnections() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            connections.forEach(conn => {
+                const fromNode = nodes.find(n => n.id === conn.from);
+                const toNode = nodes.find(n => n.id === conn.to);
+                
+                if (fromNode && toNode) {
+                    // Verbindungslinie zeichnen
+                    ctx.beginPath();
+                    ctx.moveTo(fromNode.x, fromNode.y);
+                    ctx.lineTo(toNode.x, toNode.y);
+                    
+                    // Stil basierend auf Verbindungstyp
+                    ctx.strokeStyle = conn.status === 'active' ? 'var(--accent-primary)' : 'var(--accent-danger)';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([5, 5]);
+                    ctx.stroke();
+                    
+                    // Richtungspfeil
+                    drawArrow(fromNode.x, fromNode.y, toNode.x, toNode.y);
+                }
+            });
+        }
+
+        function drawArrow(fromX, fromY, toX, toY) {
+            const angle = Math.atan2(toY - fromY, toX - fromX);
+            const arrowLength = 15;
+            const arrowAngle = 0.5;
+            
+            // Pfeilspitze am Zielnode
+            const arrowX = toX - Math.cos(angle) * 45;
+            const arrowY = toY - Math.sin(angle) * 45;
+            
+            ctx.beginPath();
+            ctx.moveTo(arrowX, arrowY);
+            ctx.lineTo(
+                arrowX - arrowLength * Math.cos(angle - arrowAngle),
+                arrowY - arrowLength * Math.sin(angle - arrowAngle)
+            );
+            ctx.moveTo(arrowX, arrowY);
+            ctx.lineTo(
+                arrowX - arrowLength * Math.cos(angle + arrowAngle),
+                arrowY - arrowLength * Math.sin(angle + arrowAngle)
+            );
+            ctx.stroke();
+        }
+
+        function updateConnectionList() {
+            const list = document.getElementById('connection-list');
+            
+            if (connections.length === 0) {
+                list.innerHTML = '<div class="text-muted italic">No connections yet</div>';
+                return;
+            }
+            
+            list.innerHTML = connections.map(conn => {
+                const fromNode = nodes.find(n => n.id === conn.from);
+                const toNode = nodes.find(n => n.id === conn.to);
+                
+                return `
+                    <div class="connection-item">
+                        <span class="text-secondary">${fromNode.label} → ${toNode.label}</span>
+                        <button class="btn btn-sm btn-ghost text-accent-danger" onclick="deleteConnection('${conn.id}')">✕</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function deleteConnection(connId) {
+            connections = connections.filter(c => c.id !== connId);
+            updateConnectionList();
+        }
+
+        function addServer() {
+            const x = Math.random() * (window.innerWidth - 100) + 50;
+            const y = Math.random() * (window.innerHeight - 100) + 50;
+            addNode('server', `Server ${nodeCounter + 1}`, x, y);
+        }
+
+        function addClient() {
+            const x = Math.random() * (window.innerWidth - 100) + 50;
+            const y = Math.random() * (window.innerHeight - 100) + 50;
+            addNode('client', `Client ${nodeCounter + 1}`, x, y);
+        }
+
+        function addGateway() {
+            const x = Math.random() * (window.innerWidth - 100) + 50;
+            const y = Math.random() * (window.innerHeight - 100) + 50;
+            addNode('gateway', `Gateway ${nodeCounter + 1}`, x, y);
+        }
+
+        function clearAll() {
+            if (confirm('Alle Nodes und Verbindungen löschen?')) {
+                // Alle Nodes entfernen
+                nodes.forEach(node => {
+                    node.element.remove();
+                });
+                
+                nodes = [];
+                connections = [];
+                nodeCounter = 0;
+                
+                updateConnectionList();
+                
+                // Initiale Topologie neu erstellen
+                createInitialTopology();
+            }
+        }
+
+        function exportTopology() {
+            const topology = {
+                nodes: nodes.map(n => ({
+                    id: n.id,
+                    type: n.type,
+                    label: n.label,
+                    x: n.x,
+                    y: n.y
+                })),
+                connections: connections
+            };
+            
+            const dataStr = JSON.stringify(topology, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(dataBlob);
+            link.download = 'network-topology.json';
+            link.click();
+        }
+        
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.location.href = '/';
+            }
+        }
+    </script>
+</body>
+</html>

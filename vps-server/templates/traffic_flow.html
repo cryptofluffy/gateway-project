@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Gateway - Traffic Flow Diagram</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/minimal-design-system.css') }}">
+    <style>
+        body {
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        #flow-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: var(--primary-bg);
+            overflow: hidden;
+        }
+
+        /* Header */
+        #header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 64px;
+            background: rgba(26, 26, 26, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 var(--space-lg);
+        }
+
+        #header h1 {
+            color: var(--accent-primary);
+            font-size: var(--font-size-xl);
+            font-weight: 600;
+        }
+
+        #header .stats {
+            display: flex;
+            gap: var(--space-lg);
+            color: var(--text-secondary);
+            font-size: var(--font-size-sm);
+        }
+
+        #header .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #header .stat-value {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: var(--accent-primary);
+        }
+
+        /* Main Flow Area */
+        #flow-area {
+            position: absolute;
+            top: 64px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: var(--space-lg);
+        }
+
+        /* Flow Columns */
+        .flow-column {
+            position: absolute;
+            top: var(--space-lg);
+            bottom: var(--space-lg);
+            width: 200px;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+            padding: var(--space-lg) var(--space-md);
+            background: var(--surface-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+        }
+
+        .flow-column h3 {
+            text-align: center;
+            color: var(--accent-primary);
+            margin-bottom: var(--space-lg);
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Column Positions */
+        .sources-column {
+            left: 50px;
+        }
+
+        .gateways-column {
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .destinations-column {
+            right: 50px;
+        }
+
+        /* Flow Nodes */
+        .flow-node {
+            background: var(--surface-bg);
+            border: 2px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            margin: var(--space-xs) 0;
+            cursor: pointer;
+            transition: all var(--transition-base);
+            position: relative;
+        }
+
+        .flow-node:hover {
+            transform: translateX(5px);
+            border-color: var(--accent-primary);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .flow-node.active {
+            border-color: var(--accent-primary);
+            background: rgba(0, 255, 136, 0.1);
+        }
+
+        .flow-node .node-icon {
+            font-size: var(--font-size-xl);
+            text-align: center;
+            margin-bottom: var(--space-sm);
+        }
+
+        .flow-node .node-name {
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: var(--space-xs);
+            color: var(--text-primary);
+        }
+
+        .flow-node .node-info {
+            font-size: var(--font-size-xs);
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        /* Node Types */
+        .source-node {
+            border-left: 4px solid var(--accent-secondary);
+        }
+
+        .gateway-node {
+            border-left: 4px solid var(--accent-primary);
+        }
+
+        .destination-node {
+            border-left: 4px solid var(--accent-warning);
+        }
+
+        /* SVG für Flow-Linien */
+        #flow-svg {
+            position: absolute;
+            top: 64px;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 64px);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Control Panel */
+        #control-panel {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            min-width: 250px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-sm);
+        }
+
+        /* Flow Statistics */
+        #flow-stats {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            min-width: 200px;
+        }
+
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: var(--space-xs);
+            font-size: var(--font-size-sm);
+        }
+
+        .stats-value {
+            color: var(--accent-primary);
+            font-weight: 600;
+        }
+
+        /* Pulse Animation für aktive Flows */
+        @keyframes pulse-flow {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+
+        .flow-line.active {
+            animation: pulse-flow 2s infinite;
+        }
+
+        /* Gradient Definitions für SVG */
+        .flow-gradient-high {
+            stop-color: var(--accent-primary);
+        }
+
+        .flow-gradient-medium {
+            stop-color: var(--accent-warning);
+        }
+
+        .flow-gradient-low {
+            stop-color: var(--accent-secondary);
+        }
+
+        /* Mobile Back Button */
+        .mobile-back-btn {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+        }
+
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            #header {
+                height: 56px;
+                padding: 0 var(--space-md);
+            }
+            
+            #header h1 {
+                font-size: var(--font-size-lg);
+            }
+            
+            #header .stats {
+                gap: var(--space-md);
+                font-size: var(--font-size-xs);
+            }
+            
+            #header .stat-value {
+                font-size: var(--font-size-base);
+            }
+            
+            #flow-area {
+                top: 56px;
+                padding: var(--space-md);
+            }
+            
+            .flow-column {
+                width: 150px;
+                padding: var(--space-md) var(--space-sm);
+            }
+            
+            .sources-column {
+                left: 10px;
+            }
+            
+            .destinations-column {
+                right: 10px;
+            }
+            
+            .flow-node {
+                padding: var(--space-sm);
+            }
+            
+            .flow-node .node-icon {
+                font-size: var(--font-size-lg);
+            }
+            
+            .flow-node .node-name {
+                font-size: var(--font-size-sm);
+            }
+            
+            .flow-node .node-info {
+                font-size: 10px;
+            }
+            
+            #control-panel {
+                position: fixed;
+                bottom: 10px;
+                left: 10px;
+                right: 10px;
+                max-height: 40vh;
+                overflow-y: auto;
+            }
+            
+            #flow-stats {
+                position: fixed;
+                top: 70px;
+                left: 10px;
+                right: 10px;
+                max-height: 25vh;
+                overflow-y: auto;
+            }
+            
+            .mobile-back-btn {
+                display: block !important;
+                top: 10px;
+                right: 10px;
+            }
+            
+            #flow-svg {
+                top: 56px;
+                height: calc(100% - 56px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="flow-container">
+        <!-- Header mit Live-Statistiken -->
+        <div id="header">
+            <h1>🌐 VPN Traffic Flow Visualization</h1>
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="total-connections">0</div>
+                    <div>Connections</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="total-throughput">0 MB/s</div>
+                    <div>Throughput</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="active-flows">0</div>
+                    <div>Active Flows</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SVG für Flow-Linien -->
+        <svg id="flow-svg">
+            <defs>
+                <!-- Gradients für verschiedene Traffic-Level -->
+                <linearGradient id="gradient-high" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" class="flow-gradient-high" />
+                    <stop offset="100%" class="flow-gradient-high" stop-opacity="0.3" />
+                </linearGradient>
+                <linearGradient id="gradient-medium" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" class="flow-gradient-medium" />
+                    <stop offset="100%" class="flow-gradient-medium" stop-opacity="0.3" />
+                </linearGradient>
+                <linearGradient id="gradient-low" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" class="flow-gradient-low" />
+                    <stop offset="100%" class="flow-gradient-low" stop-opacity="0.3" />
+                </linearGradient>
+            </defs>
+        </svg>
+
+        <!-- Flow Area -->
+        <div id="flow-area">
+            <!-- Sources Column -->
+            <div class="flow-column sources-column">
+                <h3>📡 Sources</h3>
+                <div id="sources-container"></div>
+            </div>
+
+            <!-- Gateways Column -->
+            <div class="flow-column gateways-column">
+                <h3>🌐 Gateways</h3>
+                <div id="gateways-container"></div>
+            </div>
+
+            <!-- Destinations Column -->
+            <div class="flow-column destinations-column">
+                <h3>🎯 Destinations</h3>
+                <div id="destinations-container"></div>
+            </div>
+        </div>
+
+        <!-- Mobile Back Button -->
+        <button class="mobile-back-btn btn btn-primary" onclick="goBack()" title="Zurück zum Dashboard">
+            ←
+        </button>
+
+        <!-- Control Panel -->
+        <div id="control-panel" class="card">
+            <div class="card-header">
+                <h3 class="card-title text-accent">🎛️ Traffic Controls</h3>
+            </div>
+            <div class="card-body">
+                <div class="control-group">
+                    <button class="btn btn-secondary" onclick="toggleFlowAnimation()">⏯️ Toggle Animation</button>
+                    <button class="btn btn-secondary" onclick="addSource()">📡 Add Source</button>
+                    <button class="btn btn-secondary" onclick="addDestination()">🎯 Add Destination</button>
+                    <button class="btn btn-primary" onclick="simulateTraffic()">🔄 Simulate Traffic</button>
+                    <button class="btn btn-ghost" onclick="clearAllFlows()">🗑️ Clear Flows</button>
+                    <button class="btn btn-primary" onclick="exportFlowConfig()">💾 Export Config</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Flow Statistics -->
+        <div id="flow-stats" class="card">
+            <div class="card-header">
+                <h4 class="card-title text-accent">📊 Flow Statistics</h4>
+            </div>
+            <div class="card-body">
+                <div class="stats-row">
+                    <span>Total Bandwidth:</span>
+                    <span class="stats-value" id="total-bandwidth">0 Mbps</span>
+                </div>
+                <div class="stats-row">
+                    <span>Peak Traffic:</span>
+                    <span class="stats-value" id="peak-traffic">0 MB/s</span>
+                </div>
+                <div class="stats-row">
+                    <span>Active Routes:</span>
+                    <span class="stats-value" id="active-routes">0</span>
+                </div>
+                <div class="stats-row">
+                    <span>Packet Loss:</span>
+                    <span class="stats-value" id="packet-loss">0%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Globale Variablen
+        let sources = [];
+        let gateways = [];
+        let destinations = [];
+        let flows = [];
+        let animationEnabled = true;
+        let nodeCounter = 0;
+
+        // Initialisierung
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Traffic Flow Visualization loading...');
+            initializeDefaultNodes();
+            startFlowAnimation();
+            updateStatistics();
+            setInterval(updateStatistics, 1000); // Update jede Sekunde
+        });
+
+        function initializeDefaultNodes() {
+            // Standard Sources
+            addNodeToColumn('sources', {
+                icon: '💻',
+                name: 'Client PC 1',
+                info: '192.168.1.100',
+                bandwidth: 25,
+                status: 'active'
+            });
+
+            addNodeToColumn('sources', {
+                icon: '📱',
+                name: 'Mobile Client',
+                info: '192.168.1.101', 
+                bandwidth: 15,
+                status: 'active'
+            });
+
+            addNodeToColumn('sources', {
+                icon: '🖥️',
+                name: 'Office PC',
+                info: '192.168.2.50',
+                bandwidth: 40,
+                status: 'active'
+            });
+
+            // Standard Gateways
+            addNodeToColumn('gateways', {
+                icon: '🌐',
+                name: 'Gateway Pi',
+                info: '10.8.0.1',
+                bandwidth: 100,
+                status: 'active'
+            });
+
+            addNodeToColumn('gateways', {
+                icon: '☁️',
+                name: 'VPS Server',
+                info: 'vpn.example.com',
+                bandwidth: 1000,
+                status: 'active'
+            });
+
+            // Standard Destinations
+            addNodeToColumn('destinations', {
+                icon: '🌍',
+                name: 'Internet',
+                info: '0.0.0.0/0',
+                bandwidth: 500,
+                status: 'active'
+            });
+
+            addNodeToColumn('destinations', {
+                icon: '🖥️',
+                name: 'Web Server',
+                info: '10.0.0.100',
+                bandwidth: 100,
+                status: 'active'
+            });
+
+            addNodeToColumn('destinations', {
+                icon: '🗄️',
+                name: 'Database',
+                info: '10.0.0.200',
+                bandwidth: 75,
+                status: 'active'
+            });
+
+            // Initiale Flows erstellen
+            setTimeout(() => {
+                createFlow(sources[0], gateways[0], destinations[0], 'high');
+                createFlow(sources[1], gateways[0], destinations[1], 'medium');
+                createFlow(sources[2], gateways[1], destinations[2], 'low');
+            }, 500);
+        }
+
+        function addNodeToColumn(columnType, nodeData) {
+            nodeCounter++;
+            const node = document.createElement('div');
+            node.className = `flow-node ${columnType.slice(0, -1)}-node`;
+            node.id = `node-${columnType}-${nodeCounter}`;
+            
+            node.innerHTML = `
+                <div class="node-icon">${nodeData.icon}</div>
+                <div class="node-name">${nodeData.name}</div>
+                <div class="node-info">${nodeData.info}</div>
+            `;
+
+            // Event Listeners
+            node.addEventListener('click', function() {
+                toggleNodeSelection(node, columnType);
+            });
+
+            // Zu entsprechender Liste hinzufügen
+            const nodeObj = {
+                id: node.id,
+                element: node,
+                type: columnType,
+                data: nodeData
+            };
+
+            switch(columnType) {
+                case 'sources': sources.push(nodeObj); break;
+                case 'gateways': gateways.push(nodeObj); break;
+                case 'destinations': destinations.push(nodeObj); break;
+            }
+
+            // In DOM einfügen
+            document.getElementById(`${columnType}-container`).appendChild(node);
+        }
+
+        function toggleNodeSelection(nodeElement, columnType) {
+            // Alle anderen Nodes der gleichen Spalte deselektieren
+            document.querySelectorAll(`.${columnType.slice(0, -1)}-node`).forEach(n => {
+                n.classList.remove('active');
+            });
+
+            // Aktuelle Node aktivieren
+            nodeElement.classList.add('active');
+            
+            console.log(`${columnType} selected:`, nodeElement.id);
+        }
+
+        function createFlow(sourceNode, gatewayNode, destNode, intensity = 'medium') {
+            const flow = {
+                id: `flow-${flows.length + 1}`,
+                source: sourceNode,
+                gateway: gatewayNode,
+                destination: destNode,
+                intensity: intensity,
+                bandwidth: Math.random() * 50 + 10, // 10-60 Mbps
+                status: 'active'
+            };
+
+            flows.push(flow);
+            drawFlow(flow);
+            console.log('Flow created:', flow);
+        }
+
+        function drawFlow(flow) {
+            const svg = document.getElementById('flow-svg');
+            
+            // Source zu Gateway
+            const sourceRect = flow.source.element.getBoundingClientRect();
+            const gatewayRect = flow.gateway.element.getBoundingClientRect();
+            const destRect = flow.destination.element.getBoundingClientRect();
+            
+            const svgRect = svg.getBoundingClientRect();
+            
+            // Koordinaten relativ zum SVG
+            const sourceX = sourceRect.right - svgRect.left;
+            const sourceY = sourceRect.top + sourceRect.height/2 - svgRect.top;
+            
+            const gatewayX = gatewayRect.left - svgRect.left;
+            const gatewayY = gatewayRect.top + gatewayRect.height/2 - svgRect.top;
+            
+            const destX = destRect.left - svgRect.left;
+            const destY = destRect.top + destRect.height/2 - svgRect.top;
+
+            // Linienstärke basierend auf Intensität
+            let strokeWidth;
+            let gradientId;
+            switch(flow.intensity) {
+                case 'high': strokeWidth = 8; gradientId = 'gradient-high'; break;
+                case 'medium': strokeWidth = 5; gradientId = 'gradient-medium'; break;
+                case 'low': strokeWidth = 3; gradientId = 'gradient-low'; break;
+                default: strokeWidth = 4; gradientId = 'gradient-medium';
+            }
+
+            // Source zu Gateway Linie
+            const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const d1 = `M ${sourceX} ${sourceY} Q ${sourceX + (gatewayX - sourceX)/2} ${sourceY} ${gatewayX} ${gatewayY}`;
+            path1.setAttribute('d', d1);
+            path1.setAttribute('stroke', `url(#${gradientId})`);
+            path1.setAttribute('stroke-width', strokeWidth);
+            path1.setAttribute('fill', 'none');
+            path1.setAttribute('class', 'flow-line active');
+            path1.setAttribute('data-flow-id', flow.id);
+
+            // Gateway zu Destination Linie
+            const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const d2 = `M ${gatewayX + 200} ${gatewayY} Q ${gatewayX + 200 + (destX - gatewayX - 200)/2} ${gatewayY} ${destX} ${destY}`;
+            path2.setAttribute('d', d2);
+            path2.setAttribute('stroke', `url(#${gradientId})`);
+            path2.setAttribute('stroke-width', strokeWidth);
+            path2.setAttribute('fill', 'none');
+            path2.setAttribute('class', 'flow-line active');
+            path2.setAttribute('data-flow-id', flow.id);
+
+            svg.appendChild(path1);
+            svg.appendChild(path2);
+        }
+
+        function simulateTraffic() {
+            // Zufällige neue Flows erstellen
+            if (sources.length > 0 && gateways.length > 0 && destinations.length > 0) {
+                const randomSource = sources[Math.floor(Math.random() * sources.length)];
+                const randomGateway = gateways[Math.floor(Math.random() * gateways.length)];
+                const randomDest = destinations[Math.floor(Math.random() * destinations.length)];
+                const randomIntensity = ['low', 'medium', 'high'][Math.floor(Math.random() * 3)];
+                
+                createFlow(randomSource, randomGateway, randomDest, randomIntensity);
+            }
+        }
+
+        function toggleFlowAnimation() {
+            animationEnabled = !animationEnabled;
+            const button = event.target;
+            
+            if (animationEnabled) {
+                button.textContent = '⏸️ Pause Animation';
+                document.querySelectorAll('.flow-line').forEach(line => {
+                    line.classList.add('active');
+                });
+            } else {
+                button.textContent = '▶️ Resume Animation';
+                document.querySelectorAll('.flow-line').forEach(line => {
+                    line.classList.remove('active');
+                });
+            }
+        }
+
+        function addSource() {
+            const sourceData = {
+                icon: '💻',
+                name: `Client ${sources.length + 1}`,
+                info: `192.168.1.${100 + sources.length}`,
+                bandwidth: Math.floor(Math.random() * 50) + 10,
+                status: 'active'
+            };
+            addNodeToColumn('sources', sourceData);
+        }
+
+        function addDestination() {
+            const destData = {
+                icon: '🖥️',
+                name: `Server ${destinations.length + 1}`,
+                info: `10.0.0.${100 + destinations.length}`,
+                bandwidth: Math.floor(Math.random() * 100) + 50,
+                status: 'active'
+            };
+            addNodeToColumn('destinations', destData);
+        }
+
+        function clearAllFlows() {
+            if (confirm('Alle Traffic-Flows löschen?')) {
+                // SVG-Pfade entfernen
+                document.querySelectorAll('.flow-line').forEach(line => line.remove());
+                flows = [];
+                updateStatistics();
+            }
+        }
+
+        function updateStatistics() {
+            document.getElementById('total-connections').textContent = flows.length;
+            document.getElementById('active-flows').textContent = flows.filter(f => f.status === 'active').length;
+            
+            const totalBandwidth = flows.reduce((sum, flow) => sum + flow.bandwidth, 0);
+            document.getElementById('total-throughput').textContent = `${totalBandwidth.toFixed(1)} MB/s`;
+            document.getElementById('total-bandwidth').textContent = `${(totalBandwidth * 8).toFixed(0)} Mbps`;
+            
+            document.getElementById('active-routes').textContent = flows.length;
+            document.getElementById('peak-traffic').textContent = `${Math.max(...flows.map(f => f.bandwidth), 0).toFixed(1)} MB/s`;
+            document.getElementById('packet-loss').textContent = `${(Math.random() * 0.5).toFixed(2)}%`;
+        }
+
+        function startFlowAnimation() {
+            // Simuliere kontinuierliche Traffic-Änderungen
+            setInterval(() => {
+                if (animationEnabled && flows.length > 0) {
+                    // Zufälligen Flow aktualisieren
+                    const randomFlow = flows[Math.floor(Math.random() * flows.length)];
+                    randomFlow.bandwidth = Math.random() * 50 + 10;
+                    updateStatistics();
+                }
+            }, 2000);
+        }
+        
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.location.href = '/';
+            }
+        }
+
+        function exportFlowConfig() {
+            const config = {
+                sources: sources.map(s => s.data),
+                gateways: gateways.map(g => g.data),
+                destinations: destinations.map(d => d.data),
+                flows: flows.map(f => ({
+                    source: f.source.data,
+                    gateway: f.gateway.data,
+                    destination: f.destination.data,
+                    intensity: f.intensity,
+                    bandwidth: f.bandwidth
+                }))
+            };
+            
+            const dataStr = JSON.stringify(config, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(dataBlob);
+            link.download = 'traffic-flow-config.json';
+            link.click();
+        }
+
+        // Responsive Redraw
+        window.addEventListener('resize', function() {
+            setTimeout(() => {
+                // SVG löschen und neu zeichnen
+                document.querySelectorAll('.flow-line').forEach(line => line.remove());
+                flows.forEach(flow => drawFlow(flow));
+            }, 100);
+        });
+    </script>
+</body>
+</html>

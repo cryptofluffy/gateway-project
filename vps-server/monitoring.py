@@ -55,13 +55,21 @@ class ProcessStats:
 class SystemMonitor:
     """Umfassendes System-Monitoring mit Caching und Historie"""
     
-    def __init__(self, history_size: int = 100):
-        self.history_size = history_size
+    def __init__(self, history_size: int = 50):
+        # Begrenzte Historie für bessere Performance auf schwächerer Hardware
+        self.history_size = min(history_size, 50)  # Begrenzt für Raspberry Pi
         self.stats_history: List[SystemStats] = []
-        self.cache_timeout = 5  # Sekunden
+        
+        # Längeres Caching reduziert CPU-Last erheblich
+        self.cache_timeout = 10  # Längeres Caching für weniger CPU-Last
         self.last_update = 0
         self.cached_stats: Optional[SystemStats] = None
+        
+        # Thread-Sicherheit für gleichzeitige Zugriffe
         self._lock = threading.Lock()
+        
+        # Hardware-spezifische Optimierungen
+        self._is_rpi = self._detect_raspberry_pi()
         
     def get_current_stats(self, force_refresh: bool = False) -> Dict:
         """
@@ -75,7 +83,8 @@ class SystemMonitor:
         """
         current_time = time.time()
         
-        # Cache prüfen
+        # Cache prüfen - verhindert unnötige System-Calls
+        # Besonders wichtig auf Pi wo System-Calls teuer sind
         if (not force_refresh and 
             self.cached_stats and 
             current_time - self.last_update < self.cache_timeout):
@@ -108,9 +117,15 @@ class SystemMonitor:
             return self._get_minimal_stats()
         
         try:
-            # CPU-Statistiken
-            cpu_percent = psutil.cpu_percent(interval=0.1)
+            # CPU-Statistiken (optimiert für Raspberry Pi)
+            # Längere Intervalle reduzieren CPU-Last auf schwächeren Systemen
+            interval = 0.5 if self._is_rpi else 0.1  # Längere Messintervalle auf Pi
+            cpu_percent = psutil.cpu_percent(interval=interval)
+            
+            # Temperatur-Monitoring besonders wichtig für Pi (Throttling-Schutz)
             cpu_temp = self._get_cpu_temperature()
+            
+            # Load Average für bessere Performance-Einschätzung
             load_avg = list(psutil.getloadavg()) if hasattr(psutil, 'getloadavg') else [0.0, 0.0, 0.0]
             
             # Memory-Statistiken
@@ -147,7 +162,7 @@ class SystemMonitor:
             )
             
         except Exception as e:
-            logger.error(f"Fehler bei der Statistik-Sammlung: {e}")
+            logger.debug(f"Fehler bei der Statistik-Sammlung: {e}")  # Debug statt Error
             return self._get_minimal_stats()
     
     def _get_cpu_temperature(self) -> Optional[float]:
@@ -309,6 +324,18 @@ class SystemMonitor:
             'error': 'Monitoring nicht verfügbar'
         }
     
+    def _detect_raspberry_pi(self) -> bool:
+        """Erkennt ob auf Raspberry Pi ausgeführt wird"""
+        try:
+            # /proc/cpuinfo enthält Hardware-Informationen
+            with open('/proc/cpuinfo', 'r') as f:
+                content = f.read().lower()
+                # Raspberry Pi hat charakteristische Bezeichnungen
+                return 'raspberry pi' in content or 'bcm' in content
+        except:
+            # Bei Fehlern konservativ annehmen: kein Pi
+            return False
+    
     def get_process_stats(self, process_names: List[str] = None) -> List[ProcessStats]:
         """
         Statistiken für spezifische Prozesse
@@ -379,9 +406,13 @@ class SystemMonitor:
             return {}
         
         with self._lock:
-            cpu_values = [s.cpu_percent for s in self.stats_history[-20:]]  # Letzte 20 Messungen
-            memory_values = [s.memory_percent for s in self.stats_history[-20:]]
-            temp_values = [s.cpu_temp for s in self.stats_history[-20:] if s.cpu_temp is not None]
+            # Weniger Samples auf Pi reduziert Speicher- und CPU-Verbrauch
+            sample_size = 10 if self._is_rpi else 20  # Weniger Samples auf Pi
+            
+            # Extrahiere Werte für Performance-Analyse
+            cpu_values = [s.cpu_percent for s in self.stats_history[-sample_size:]]
+            memory_values = [s.memory_percent for s in self.stats_history[-sample_size:]]
+            temp_values = [s.cpu_temp for s in self.stats_history[-sample_size:] if s.cpu_temp is not None]
             
             return {
                 'cpu_avg': round(sum(cpu_values) / len(cpu_values), 1) if cpu_values else 0,
