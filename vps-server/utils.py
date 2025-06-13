@@ -153,6 +153,114 @@ class NetworkUtils:
     """Netzwerk-bezogene Utility-Funktionen"""
     
     @staticmethod
+    def resolve_hostname(ip: str, timeout: int = 2) -> Optional[str]:
+        """
+        Versucht den Hostnamen für eine IP-Adresse zu ermitteln
+        
+        Args:
+            ip: IP-Adresse
+            timeout: Timeout in Sekunden
+            
+        Returns:
+            Hostname oder None falls nicht auflösbar
+        """
+        try:
+            import socket
+            socket.setdefaulttimeout(timeout)
+            hostname = socket.gethostbyaddr(ip)[0]
+            return hostname if hostname != ip else None
+        except (socket.herror, socket.gaierror, socket.timeout, OSError):
+            return None
+    
+    @staticmethod
+    def get_connected_devices_with_hostnames(subnet: str = "10.0.0.0/24") -> List[Dict[str, str]]:
+        """
+        Ermittelt alle erreichbaren Geräte im Subnet mit Hostnamen
+        
+        Args:
+            subnet: Subnet zum Scannen
+            
+        Returns:
+            Liste von Geräten mit IP und Hostname
+        """
+        devices = []
+        
+        try:
+            # ARP-Tabelle lesen für schnelle Geräte-Erkennung
+            arp_devices = NetworkUtils._get_arp_table()
+            
+            # WireGuard verbundene Clients
+            wg_clients = NetworkUtils._get_wireguard_clients()
+            
+            # Kombiniere ARP und WireGuard Daten
+            all_ips = set()
+            all_ips.update(device['ip'] for device in arp_devices)
+            all_ips.update(client['ip'] for client in wg_clients if client.get('ip'))
+            
+            for ip in all_ips:
+                if ip.startswith('10.0.0.') or ip.startswith('10.8.0.'):
+                    hostname = NetworkUtils.resolve_hostname(ip, timeout=1)
+                    
+                    # Suche zusätzliche Infos aus WireGuard
+                    wg_info = next((c for c in wg_clients if c.get('ip') == ip), None)
+                    name = wg_info.get('name') if wg_info else None
+                    
+                    devices.append({
+                        'ip': ip,
+                        'hostname': hostname,
+                        'name': name,
+                        'status': 'connected' if wg_info else 'reachable'
+                    })
+            
+            # Sortiere nach IP
+            devices.sort(key=lambda x: ipaddress.ip_address(x['ip']))
+            
+        except Exception as e:
+            logger.error(f"Error scanning for devices: {e}")
+        
+        return devices
+    
+    @staticmethod
+    def _get_arp_table() -> List[Dict[str, str]]:
+        """Liest die ARP-Tabelle für verbundene Geräte"""
+        devices = []
+        try:
+            result = subprocess.run(['ip', 'neigh'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if 'REACHABLE' in line or 'STALE' in line:
+                        parts = line.split()
+                        if len(parts) >= 1:
+                            ip = parts[0]
+                            if ip.replace('.', '').isdigit():  # Einfache IP-Validierung
+                                devices.append({'ip': ip})
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception as e:
+            logger.debug(f"Error reading ARP table: {e}")
+        
+        return devices
+    
+    @staticmethod
+    def _get_wireguard_clients() -> List[Dict[str, str]]:
+        """Ermittelt WireGuard Clients mit IPs"""
+        clients = []
+        try:
+            result = subprocess.run(['wg', 'show', 'wg0', 'allowed-ips'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if line.strip() and '/' in line:
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            ip = parts[1].split('/')[0]  # Entferne /32 Suffix
+                            clients.append({'ip': ip, 'name': 'Gateway'})
+        except Exception as e:
+            logger.debug(f"Error reading WireGuard clients: {e}")
+        
+        return clients
+
+    @staticmethod
     def get_next_available_ip(subnet: str, used_ips: List[str]) -> Optional[str]:
         """
         Findet die nächste verfügbare IP in einem Subnet

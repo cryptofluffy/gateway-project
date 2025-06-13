@@ -930,6 +930,23 @@ def api_network_interfaces():
             'message': f'Fehler beim Abrufen der Netzwerkschnittstellen: {str(e)}'
         }), 500
 
+@app.route('/api/devices', methods=['GET'])
+@limiter.limit("10 per minute")
+def api_devices():
+    """API: Verfügbare Geräte im Netzwerk mit Hostnamen"""
+    try:
+        devices = NetworkUtils.get_connected_devices_with_hostnames()
+        return jsonify({
+            'success': True,
+            'devices': devices
+        })
+    except Exception as e:
+        logger.error(f"Error getting network devices: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Fehler beim Ermitteln der Netzwerkgeräte: {str(e)}'
+        }), 500
+
 @app.route('/api/port-forwards', methods=['GET', 'POST', 'DELETE'])
 @limiter.limit("15 per minute")
 def api_port_forwards():

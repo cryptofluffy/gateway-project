@@ -401,23 +401,30 @@ class PortForwardManager {
     }
 
     /**
-     * Verbundene Clients laden und IP-Dropdown aktualisieren
+     * Verbundene Clients und Geräte laden und IP-Dropdown aktualisieren
      */
     async loadConnectedClients() {
         try {
-            const response = await this.apiRequest('/api/clients');
-            const clients = await response.json();
+            // Lade sowohl Clients als auch Geräte mit Hostnamen parallel
+            const [clientsResponse, devicesResponse] = await Promise.all([
+                this.apiRequest('/api/clients').catch(() => ({ json: () => [] })),
+                this.apiRequest('/api/devices').catch(() => ({ json: () => ({ devices: [] }) }))
+            ]);
             
-            this.updateIPDropdown(clients);
+            const clients = await clientsResponse.json();
+            const devicesData = await devicesResponse.json();
+            const devices = devicesData.devices || [];
+            
+            this.updateIPDropdown(clients, devices);
         } catch (error) {
             console.error('Fehler beim Laden der verbundenen Clients:', error);
         }
     }
 
     /**
-     * IP-Dropdown mit verbundenen Gateway-IPs aktualisieren
+     * IP-Dropdown mit verbundenen Gateway-IPs und Geräten aktualisieren
      */
-    updateIPDropdown(clients) {
+    updateIPDropdown(clients, devices = []) {
         const ipField = document.getElementById('internal_ip');
         if (!ipField) return;
 
@@ -436,25 +443,94 @@ class PortForwardManager {
         // Datalist leeren
         datalist.innerHTML = '';
 
-        // Connected Clients hinzufügen
+        // Alle verfügbaren IPs sammeln
+        const allEntries = new Map();
+
+        // Connected VPN Clients hinzufügen
         if (clients && clients.length > 0) {
             clients.forEach(client => {
                 if (client.ip && client.status === 'connected') {
-                    const option = document.createElement('option');
-                    option.value = client.ip;
-                    option.label = `${client.ip} - ${client.name || 'Gateway'} (${client.location || 'Unbekannt'})`;
-                    datalist.appendChild(option);
+                    allEntries.set(client.ip, {
+                        ip: client.ip,
+                        type: 'vpn-client',
+                        name: client.name || 'VPN Gateway',
+                        location: client.location || 'Unbekannt',
+                        hostname: null
+                    });
                 }
             });
         }
 
-        // Default-IPs hinzufügen falls keine Clients verbunden sind
-        if (datalist.children.length === 0) {
+        // Netzwerk-Geräte mit Hostnamen hinzufügen
+        if (devices && devices.length > 0) {
+            devices.forEach(device => {
+                if (device.ip) {
+                    const existing = allEntries.get(device.ip);
+                    if (existing) {
+                        // Hostname zu existierendem VPN-Client hinzufügen
+                        existing.hostname = device.hostname;
+                    } else {
+                        // Neues Gerät hinzufügen
+                        allEntries.set(device.ip, {
+                            ip: device.ip,
+                            type: device.status === 'connected' ? 'device-connected' : 'device-reachable',
+                            name: device.name,
+                            hostname: device.hostname,
+                            location: null
+                        });
+                    }
+                }
+            });
+        }
+
+        // Sortiere Einträge nach IP-Adresse
+        const sortedEntries = Array.from(allEntries.values()).sort((a, b) => {
+            const ipA = a.ip.split('.').map(num => parseInt(num, 10));
+            const ipB = b.ip.split('.').map(num => parseInt(num, 10));
+            for (let i = 0; i < 4; i++) {
+                if (ipA[i] !== ipB[i]) return ipA[i] - ipB[i];
+            }
+            return 0;
+        });
+
+        // Datalist-Optionen erstellen
+        sortedEntries.forEach(entry => {
+            const option = document.createElement('option');
+            option.value = entry.ip;
+            
+            // Label zusammenstellen
+            let label = entry.ip;
+            
+            if (entry.hostname) {
+                label += ` - ${entry.hostname}`;
+            } else if (entry.name) {
+                label += ` - ${entry.name}`;
+            }
+            
+            if (entry.location) {
+                label += ` (${entry.location})`;
+            }
+            
+            // Status-Icon hinzufügen
+            if (entry.type === 'vpn-client') {
+                label = `🔒 ${label}`;
+            } else if (entry.type === 'device-connected') {
+                label = `💻 ${label}`;
+            } else {
+                label = `📱 ${label}`;
+            }
+            
+            option.label = label;
+            datalist.appendChild(option);
+        });
+
+        // Default-IPs hinzufügen falls keine Geräte gefunden wurden
+        if (allEntries.size === 0) {
             const defaultIPs = ['10.0.0.100', '10.0.0.101', '10.0.0.102'];
             defaultIPs.forEach(ip => {
                 const option = document.createElement('option');
                 option.value = ip;
-                option.label = `${ip} - Gateway (Beispiel)`;
+                option.label = `📡 ${ip} - Gateway (Beispiel)`;
                 datalist.appendChild(option);
             });
         }
@@ -465,7 +541,8 @@ class PortForwardManager {
         // IP-Feld als verbessert markieren
         if (!ipField.classList.contains('enhanced')) {
             ipField.classList.add('enhanced');
-            ipField.placeholder = 'IP-Adresse oder wählen Sie aus verfügbaren Gateways';
+            ipField.placeholder = 'IP-Adresse eingeben oder aus verfügbaren Geräten wählen';
+            ipField.title = 'Verfügbare Geräte: 🔒=VPN Gateway, 💻=Verbundenes Gerät, 📱=Erreichbares Gerät';
             
             // Refresh-Button hinzufügen
             this.addRefreshButton(ipField);
@@ -487,7 +564,7 @@ class PortForwardManager {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
             </svg>
         `;
-        refreshBtn.title = 'Verbundene Gateways neu laden';
+        refreshBtn.title = 'Verfügbare Geräte neu laden';
         refreshBtn.addEventListener('click', () => this.loadConnectedClients());
 
         // Container als relative positionieren
