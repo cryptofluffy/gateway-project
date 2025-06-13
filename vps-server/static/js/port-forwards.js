@@ -8,6 +8,7 @@ class PortForwardManager {
         this.initializeEventListeners();
         this.loadingOverlay = this.createLoadingOverlay();
         this.serviceTemplates = this.getServiceTemplates();
+        this.loadConnectedClients();
     }
 
     /**
@@ -397,6 +398,101 @@ class PortForwardManager {
             notification.classList.add('translate-x-full');
             setTimeout(() => notification.remove(), 300);
         }, 5000);
+    }
+
+    /**
+     * Verbundene Clients laden und IP-Dropdown aktualisieren
+     */
+    async loadConnectedClients() {
+        try {
+            const response = await this.apiRequest('/api/clients');
+            const clients = await response.json();
+            
+            this.updateIPDropdown(clients);
+        } catch (error) {
+            console.error('Fehler beim Laden der verbundenen Clients:', error);
+        }
+    }
+
+    /**
+     * IP-Dropdown mit verbundenen Gateway-IPs aktualisieren
+     */
+    updateIPDropdown(clients) {
+        const ipField = document.getElementById('internal_ip');
+        if (!ipField) return;
+
+        // Aktuellen Wert speichern
+        const currentValue = ipField.value;
+
+        // Datalist für Autocomplete erstellen/aktualisieren
+        let datalist = document.getElementById('gateway-ips');
+        if (!datalist) {
+            datalist = document.createElement('datalist');
+            datalist.id = 'gateway-ips';
+            ipField.parentNode.insertBefore(datalist, ipField.nextSibling);
+            ipField.setAttribute('list', 'gateway-ips');
+        }
+
+        // Datalist leeren
+        datalist.innerHTML = '';
+
+        // Connected Clients hinzufügen
+        if (clients && clients.length > 0) {
+            clients.forEach(client => {
+                if (client.ip && client.status === 'connected') {
+                    const option = document.createElement('option');
+                    option.value = client.ip;
+                    option.label = `${client.ip} - ${client.name || 'Gateway'} (${client.location || 'Unbekannt'})`;
+                    datalist.appendChild(option);
+                }
+            });
+        }
+
+        // Default-IPs hinzufügen falls keine Clients verbunden sind
+        if (datalist.children.length === 0) {
+            const defaultIPs = ['10.0.0.100', '10.0.0.101', '10.0.0.102'];
+            defaultIPs.forEach(ip => {
+                const option = document.createElement('option');
+                option.value = ip;
+                option.label = `${ip} - Gateway (Beispiel)`;
+                datalist.appendChild(option);
+            });
+        }
+
+        // Aktuellen Wert wiederherstellen
+        ipField.value = currentValue;
+
+        // IP-Feld als verbessert markieren
+        if (!ipField.classList.contains('enhanced')) {
+            ipField.classList.add('enhanced');
+            ipField.placeholder = 'IP-Adresse oder wählen Sie aus verfügbaren Gateways';
+            
+            // Refresh-Button hinzufügen
+            this.addRefreshButton(ipField);
+        }
+    }
+
+    /**
+     * Refresh-Button für IP-Dropdown hinzufügen
+     */
+    addRefreshButton(ipField) {
+        const container = ipField.parentNode;
+        if (container.querySelector('.refresh-clients-btn')) return;
+
+        const refreshBtn = document.createElement('button');
+        refreshBtn.type = 'button';
+        refreshBtn.className = 'refresh-clients-btn absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none';
+        refreshBtn.innerHTML = `
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+        `;
+        refreshBtn.title = 'Verbundene Gateways neu laden';
+        refreshBtn.addEventListener('click', () => this.loadConnectedClients());
+
+        // Container als relative positionieren
+        container.style.position = 'relative';
+        container.appendChild(refreshBtn);
     }
 
     /**
