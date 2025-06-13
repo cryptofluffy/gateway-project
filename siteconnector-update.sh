@@ -17,14 +17,20 @@ fi
 if [ -f "/opt/siteconnector-vps/app.py" ] || [ -f "/opt/wireguard-vps/app.py" ]; then
     SYSTEM_TYPE="vps"
     echo "🖥️ SiteConnector VPS erkannt"
-elif [ -f "/usr/local/bin/gateway-manager" ] || [ -f "/usr/local/bin/siteconnector-gateway" ]; then
+elif [ -f "/usr/local/bin/gateway-manager" ] || [ -f "/usr/local/bin/siteconnector-gateway" ] || [ -f "/usr/local/bin/gateway_manager.py" ]; then
     SYSTEM_TYPE="gateway"
     echo "🌐 SiteConnector Gateway erkannt"
+elif systemctl is-enabled wireguard-vps &>/dev/null || systemctl is-active wireguard-vps &>/dev/null; then
+    SYSTEM_TYPE="vps"
+    echo "🖥️ Legacy VPS Installation erkannt"
+elif systemctl is-enabled gateway-manager &>/dev/null || systemctl is-active gateway-manager &>/dev/null; then
+    SYSTEM_TYPE="gateway" 
+    echo "🌐 Legacy Gateway Installation erkannt"
 else
     echo "❌ SiteConnector System nicht erkannt"
     echo "💡 Installiere zuerst SiteConnector:"
     echo "   VPS: curl -s https://raw.githubusercontent.com/cryptofluffy/gateway-project/main/vps-server/install.sh | sudo bash"
-    echo "   Gateway: curl -s https://raw.githubusercontent.com/cryptofluffy/gateway-project/main/gateway-pc/install.sh | sudo bash"
+    echo "   Gateway: curl -s https://raw.githubusercontent.com/cryptofluffy/gateway-project/main/gateway-software/install.sh | sudo bash"
     exit 1
 fi
 
