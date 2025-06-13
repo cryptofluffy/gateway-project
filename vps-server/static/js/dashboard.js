@@ -159,9 +159,19 @@ class DashboardManager {
                 return;
             }
 
+            // Kritische Änderungen erfordern Rollback-Bestätigung
+            const isCriticalChange = this.isCriticalNetworkChange(data.network_config);
+            if (isCriticalChange) {
+                const confirmed = await this.showRollbackWarning();
+                if (!confirmed) return;
+            }
+
             this.showLoading(i18n ? i18n.translate('notifications.client_editing') : 'Client wird bearbeitet...');
 
             try {
+                // Backup der aktuellen Konfiguration vor Änderung
+                const backupConfig = isCriticalChange ? await this.backupCurrentConfig(publicKey) : null;
+
                 const response = await this.apiRequest('/api/clients', {
                     method: 'PUT',
                     headers: {
@@ -173,8 +183,15 @@ class DashboardManager {
                 const result = await response.json();
 
                 if (result.success) {
-                    this.showSuccess(i18n ? i18n.translate('notifications.client_edited') : 'Client erfolgreich bearbeitet');
-                    setTimeout(() => location.reload(), 1500);
+                    modal.remove();
+                    
+                    if (isCriticalChange && backupConfig) {
+                        // Starte 2-Minuten-Rollback-Timer
+                        this.startRollbackTimer(publicKey, backupConfig);
+                    } else {
+                        this.showSuccess(i18n ? i18n.translate('notifications.client_edited') : 'Client erfolgreich bearbeitet');
+                        setTimeout(() => location.reload(), 1500);
+                    }
                 } else {
                     this.showError(result.message || 'Unbekannter Fehler');
                 }
@@ -182,7 +199,6 @@ class DashboardManager {
                 this.showError(`Netzwerk-Fehler: ${error.message}`);
             } finally {
                 this.hideLoading();
-                modal.remove();
             }
         });
     }
@@ -394,14 +410,19 @@ class DashboardManager {
             
             if (result.success && result.interfaces) {
                 this.lastLoadedInterfaces = result.interfaces;
+                this.lastCurrentInterfaces = result.current || {};
                 this.lastInterfaceLoadTime = Date.now();
-                this.populateInterfaceDropdowns(result.interfaces);
+                this.populateInterfaceDropdowns(result);
             }
         } catch (error) {
             console.log('Network interfaces loading failed:', error.message);
             // Fallback zu gecachten Daten
             if (this.lastLoadedInterfaces) {
-                this.populateInterfaceDropdowns(this.lastLoadedInterfaces);
+                const fallbackData = {
+                    interfaces: this.lastLoadedInterfaces,
+                    current: this.lastCurrentInterfaces || {}
+                };
+                this.populateInterfaceDropdowns(fallbackData);
             }
         }
     }
@@ -1031,18 +1052,28 @@ class DashboardManager {
     /**
      * Interface-Dropdowns im Edit-Modal befüllen
      */
-    populateEditInterfaceDropdowns(modal) {
-        // Verwende bereits geladene Interface-Daten
+    async populateEditInterfaceDropdowns(modal) {
+        // Lade aktuelle Interface-Daten falls nicht vorhanden
+        if (!this.lastLoadedInterfaces) {
+            await this.loadNetworkInterfaces();
+        }
+        
+        // Verwende die neue rebuild-Funktion für konsistente Darstellung
         if (this.lastLoadedInterfaces) {
             const wanSelect = modal.querySelector('select[name="edit_wan_interface"]');
             const lanSelect = modal.querySelector('select[name="edit_lan_interface"]');
             
-            Object.entries(this.lastLoadedInterfaces).forEach(([category, interfaceList]) => {
-                interfaceList.forEach(iface => {
-                    this.addInterfaceOptionToSelect(wanSelect, iface, category);
-                    this.addInterfaceOptionToSelect(lanSelect, iface, category);
-                });
-            });
+            const data = {
+                interfaces: this.lastLoadedInterfaces,
+                current: this.lastCurrentInterfaces || {}
+            };
+            
+            if (wanSelect) {
+                this.rebuildInterfaceDropdown(wanSelect, data.interfaces, data.current.wan, 'wan');
+            }
+            if (lanSelect) {
+                this.rebuildInterfaceDropdown(lanSelect, data.interfaces, data.current.lan, 'lan');
+            }
         }
     }
 
@@ -1067,6 +1098,224 @@ class DashboardManager {
         const exists = Array.from(select.options).some(opt => opt.value === iface.name);
         if (!exists) {
             select.appendChild(option);
+        }
+    }
+
+    /**
+     * Prüft ob eine Netzwerk-Änderung kritisch ist (Rollback erforderlich)
+     */
+    isCriticalNetworkChange(newConfig) {
+        // Änderungen an Netzwerkschnittstellen sind immer kritisch
+        return newConfig.wan_interface !== 'auto' || newConfig.lan_interface !== 'auto';
+    }
+
+    /**
+     * Zeigt Warnung vor kritischen Änderungen mit Rollback-Hinweis
+     */
+    async showRollbackWarning() {
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                    <div class="flex items-center mb-4">
+                        <div class="flex-shrink-0">
+                            <svg class="h-8 w-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-lg font-semibold text-gray-900">Kritische Netzwerk-Änderung</h3>
+                        </div>
+                    </div>
+                    <div class="mb-6">
+                        <p class="text-gray-600 mb-3">
+                            Sie sind dabei, kritische Netzwerkeinstellungen zu ändern. Dies kann zu Verbindungsabbrüchen führen.
+                        </p>
+                        <div class="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <svg class="h-5 w-5 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                    </svg>
+                                </div>
+                                <div class="ml-3">
+                                    <h4 class="text-sm font-medium text-orange-800">Automatisches Rollback</h4>
+                                    <p class="text-sm text-orange-700 mt-1">
+                                        Die Änderungen werden in <strong>2 Minuten automatisch rückgängig gemacht</strong>, falls Sie sie nicht bestätigen.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex justify-end space-x-3">
+                        <button class="cancel-btn px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors">
+                            Abbrechen
+                        </button>
+                        <button class="confirm-btn px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors">
+                            Trotzdem ändern
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            modal.querySelector('.cancel-btn').addEventListener('click', () => {
+                modal.remove();
+                resolve(false);
+            });
+
+            modal.querySelector('.confirm-btn').addEventListener('click', () => {
+                modal.remove();
+                resolve(true);
+            });
+
+            document.body.appendChild(modal);
+        });
+    }
+
+    /**
+     * Aktuelle Konfiguration als Backup speichern
+     */
+    async backupCurrentConfig(publicKey) {
+        try {
+            const response = await this.apiRequest(`/api/clients`);
+            const clients = await response.json();
+            
+            if (Array.isArray(clients)) {
+                const client = clients.find(c => c.public_key === publicKey);
+                return client ? {
+                    public_key: publicKey,
+                    name: client.name,
+                    location: client.location,
+                    network_config: client.network_config
+                } : null;
+            }
+        } catch (error) {
+            console.error('Error backing up config:', error);
+        }
+        return null;
+    }
+
+    /**
+     * Startet 2-Minuten Rollback-Timer mit Bestätigungsdialog
+     */
+    startRollbackTimer(publicKey, backupConfig) {
+        let timeLeft = 120; // 2 Minuten
+        let rollbackTimer;
+        let countdownInterval;
+
+        // Erstelle Rollback-Bestätigungsdialog
+        const rollbackModal = document.createElement('div');
+        rollbackModal.className = 'fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50';
+        rollbackModal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                <div class="flex items-center mb-4">
+                    <div class="flex-shrink-0">
+                        <svg class="h-8 w-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-lg font-semibold text-gray-900">Änderungen erfolgreich</h3>
+                    </div>
+                </div>
+                <div class="mb-6">
+                    <p class="text-gray-600 mb-3">
+                        Die Netzwerkeinstellungen wurden geändert. Bestätigen Sie die Änderungen innerhalb von <span class="countdown font-bold text-red-600">2:00</span> Minuten, oder sie werden automatisch rückgängig gemacht.
+                    </p>
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <p class="text-sm text-blue-700">
+                            💡 Testen Sie jetzt die Verbindung und bestätigen Sie die Änderungen nur, wenn alles funktioniert.
+                        </p>
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button class="rollback-btn px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors">
+                        Jetzt rückgängig machen
+                    </button>
+                    <button class="confirm-btn px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors">
+                        Änderungen bestätigen
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const countdownElement = rollbackModal.querySelector('.countdown');
+
+        // Countdown-Update-Funktion
+        const updateCountdown = () => {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            countdownElement.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            
+            if (timeLeft <= 30) {
+                countdownElement.className = 'countdown font-bold text-red-600 animate-pulse';
+            }
+        };
+
+        // Rollback-Timer starten
+        rollbackTimer = setTimeout(async () => {
+            await this.performRollback(publicKey, backupConfig);
+            rollbackModal.remove();
+        }, timeLeft * 1000);
+
+        // Countdown-Interval starten
+        countdownInterval = setInterval(() => {
+            timeLeft--;
+            updateCountdown();
+            
+            if (timeLeft <= 0) {
+                clearInterval(countdownInterval);
+            }
+        }, 1000);
+
+        // Event Listeners
+        rollbackModal.querySelector('.confirm-btn').addEventListener('click', () => {
+            clearTimeout(rollbackTimer);
+            clearInterval(countdownInterval);
+            rollbackModal.remove();
+            this.showSuccess('Änderungen erfolgreich bestätigt');
+            setTimeout(() => location.reload(), 1500);
+        });
+
+        rollbackModal.querySelector('.rollback-btn').addEventListener('click', async () => {
+            clearTimeout(rollbackTimer);
+            clearInterval(countdownInterval);
+            await this.performRollback(publicKey, backupConfig);
+            rollbackModal.remove();
+        });
+
+        document.body.appendChild(rollbackModal);
+        updateCountdown();
+    }
+
+    /**
+     * Führt Rollback zur vorherigen Konfiguration durch
+     */
+    async performRollback(publicKey, backupConfig) {
+        this.showLoading('Konfiguration wird wiederhergestellt...');
+        
+        try {
+            const response = await this.apiRequest('/api/clients', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(backupConfig)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showSuccess('Konfiguration erfolgreich wiederhergestellt');
+            } else {
+                this.showError('Fehler beim Wiederherstellen der Konfiguration');
+            }
+        } catch (error) {
+            this.showError(`Rollback-Fehler: ${error.message}`);
+        } finally {
+            this.hideLoading();
+            setTimeout(() => location.reload(), 2000);
         }
     }
 }
