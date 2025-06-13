@@ -91,6 +91,7 @@ if [ "$SYSTEM_TYPE" = "vps" ]; then
     
     # Systemd-Service erstellen/aktualisieren
     echo "📋 SiteConnector VPS Service konfigurieren..."
+    cp /tmp/siteconnector-update/vps-server/systemd/wireguard-vps.service /etc/systemd/system/ 2>/dev/null || \
     cat > /etc/systemd/system/siteconnector-vps.service << EOF
 [Unit]
 Description=SiteConnector VPS Server
@@ -178,9 +179,9 @@ elif [ "$SYSTEM_TYPE" = "gateway" ]; then
     apt install -y python3-psutil python3-requests python3-full python3-pip python3-tk
     
     # Gateway Code aktualisieren
-    cp /tmp/siteconnector-update/gateway-pc/gateway_manager.py /usr/local/bin/
-    cp /tmp/siteconnector-update/gateway-pc/system_monitor.py /usr/local/bin/
-    cp /tmp/siteconnector-update/gateway-pc/gui_app.py /usr/local/bin/ 2>/dev/null || true
+    cp /tmp/siteconnector-update/gateway-software/gateway_manager.py /usr/local/bin/
+    cp /tmp/siteconnector-update/gateway-software/system_monitor.py /usr/local/bin/
+    cp /tmp/siteconnector-update/gateway-software/gui_app.py /usr/local/bin/ 2>/dev/null || true
     
     # SiteConnector-Befehle erstellen
     cat > /usr/local/bin/siteconnector-gateway << 'EOF'
@@ -198,6 +199,7 @@ EOF
     # Systemd-Services aktualisieren
     echo "📋 SiteConnector Gateway Services konfigurieren..."
     
+    cp /tmp/siteconnector-update/gateway-software/systemd/gateway-manager.service /etc/systemd/system/siteconnector-gateway.service 2>/dev/null || \
     cat > /etc/systemd/system/siteconnector-gateway.service << EOF
 [Unit]
 Description=SiteConnector Gateway Manager
@@ -214,6 +216,7 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
     
+    cp /tmp/siteconnector-update/gateway-software/systemd/gateway-monitoring.service /etc/systemd/system/siteconnector-monitoring.service 2>/dev/null || \
     cat > /etc/systemd/system/siteconnector-monitoring.service << EOF
 [Unit]
 Description=SiteConnector Gateway Monitoring
