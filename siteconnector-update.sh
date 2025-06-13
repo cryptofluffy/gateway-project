@@ -13,6 +13,15 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Selbst-Installation prüfen und ausführen
+if [ ! -f "/usr/local/bin/siteconnector-update" ]; then
+    echo "📦 Installiere siteconnector-update Kommando..."
+    cp "$0" /usr/local/bin/siteconnector-update
+    chmod +x /usr/local/bin/siteconnector-update
+    echo "✅ siteconnector-update Kommando installiert"
+    echo "💡 Nächstes Mal verwende: sudo siteconnector-update"
+fi
+
 # System-Typ erkennen
 if [ -f "/opt/siteconnector-vps/app.py" ] || [ -f "/opt/wireguard-vps/app.py" ]; then
     SYSTEM_TYPE="vps"
