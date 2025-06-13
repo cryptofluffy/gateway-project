@@ -409,49 +409,103 @@ class DashboardManager {
     /**
      * Interface-Dropdowns mit erkannten Schnittstellen befüllen
      */
-    populateInterfaceDropdowns(interfaces) {
+    populateInterfaceDropdowns(data) {
         const wanSelect = document.getElementById('wan_interface');
         const lanSelect = document.getElementById('lan_interface');
         
         if (!wanSelect || !lanSelect) return;
         
+        const interfaces = data.interfaces || {};
+        const current = data.current || {};
+        
+        // Dropdowns komplett neu aufbauen
+        this.rebuildInterfaceDropdown(wanSelect, interfaces, current.wan, 'wan');
+        this.rebuildInterfaceDropdown(lanSelect, interfaces, current.lan, 'lan');
+        
+        // Auch Edit-Modal-Dropdowns aktualisieren falls vorhanden
+        const editWanSelect = document.getElementById('edit_wan_interface');
+        const editLanSelect = document.getElementById('edit_lan_interface');
+        if (editWanSelect) {
+            this.rebuildInterfaceDropdown(editWanSelect, interfaces, current.wan, 'wan');
+        }
+        if (editLanSelect) {
+            this.rebuildInterfaceDropdown(editLanSelect, interfaces, current.lan, 'lan');
+        }
+    }
+
+    /**
+     * Interface-Dropdown komplett neu aufbauen
+     */
+    rebuildInterfaceDropdown(select, interfaces, currentInterface, type) {
+        if (!select) return;
+        
         // Aktuelle Auswahl speichern
-        const wanValue = wanSelect.value;
-        const lanValue = lanSelect.value;
+        const savedValue = select.value;
         
-        // Standard-Optionen beibehalten und erweitern
-        const addInterfaceOption = (select, iface, category) => {
-            const option = document.createElement('option');
-            option.value = iface.name;
-            
-            let icon = '🔌';
-            if (category === 'ethernet') icon = '🌐';
-            if (category === 'wireless') icon = '📡';
-            if (category === 'virtual') icon = '🔗';
-            
-            let status = iface.status === 'up' ? '✅' : '⚠️';
-            let ip = iface.ip ? ` (${iface.ip})` : '';
-            
-            option.textContent = `${icon} ${iface.name}${ip} ${status}`;
-            
-            // Nur hinzufügen wenn noch nicht vorhanden
-            const exists = Array.from(select.options).some(opt => opt.value === iface.name);
-            if (!exists) {
-                select.appendChild(option);
+        // Dropdown leeren
+        select.innerHTML = '';
+        
+        // Automatisch erkennen Option (immer zuerst)
+        const autoOption = document.createElement('option');
+        autoOption.value = 'auto';
+        if (currentInterface) {
+            autoOption.textContent = `🔄 Automatisch erkennen (aktuell: ${currentInterface})`;
+        } else {
+            autoOption.textContent = '🔄 Automatisch erkennen';
+        }
+        select.appendChild(autoOption);
+        
+        // Gruppierte Interface-Optionen hinzufügen
+        const categories = [
+            { key: 'ethernet', name: 'Ethernet', icon: '🌐' },
+            { key: 'wireless', name: 'WLAN', icon: '📡' },
+            { key: 'virtual', name: 'Virtuell', icon: '🔗' },
+            { key: 'other', name: 'Andere', icon: '🔌' }
+        ];
+        
+        categories.forEach(category => {
+            const interfaceList = interfaces[category.key] || [];
+            if (interfaceList.length > 0) {
+                // Kategorie-Header hinzufügen
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = `${category.icon} ${category.name}`;
+                
+                interfaceList.forEach(iface => {
+                    const option = document.createElement('option');
+                    option.value = iface.name;
+                    
+                    let status = iface.status === 'up' ? '✅' : '⚠️';
+                    let ip = iface.ip ? ` (${iface.ip})` : '';
+                    let isCurrentMarker = '';
+                    
+                    // Markiere aktuell verwendetes Interface
+                    if (iface.name === currentInterface) {
+                        isCurrentMarker = ' - AKTUELL';
+                        status = '✅';
+                    }
+                    
+                    option.textContent = `${iface.name}${ip} ${status}${isCurrentMarker}`;
+                    optgroup.appendChild(option);
+                });
+                
+                select.appendChild(optgroup);
             }
-        };
-        
-        // Interfaces zu beiden Dropdowns hinzufügen
-        Object.entries(interfaces).forEach(([category, interfaceList]) => {
-            interfaceList.forEach(iface => {
-                addInterfaceOption(wanSelect, iface, category);
-                addInterfaceOption(lanSelect, iface, category);
-            });
         });
         
-        // Ursprüngliche Auswahl wiederherstellen
-        wanSelect.value = wanValue;
-        lanSelect.value = lanValue;
+        // Benutzerdefiniert Option hinzufügen
+        const customOption = document.createElement('option');
+        customOption.value = 'custom';
+        customOption.textContent = '🔧 Benutzerdefiniert';
+        select.appendChild(customOption);
+        
+        // Auswahl wiederherstellen oder auf aktuelles Interface setzen
+        if (savedValue && Array.from(select.options).some(opt => opt.value === savedValue)) {
+            select.value = savedValue;
+        } else if (currentInterface && Array.from(select.options).some(opt => opt.value === currentInterface)) {
+            select.value = currentInterface;
+        } else {
+            select.value = 'auto';
+        }
     }
 
     /**
@@ -832,24 +886,16 @@ class DashboardManager {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">WAN-Interface (Internet)</label>
-                                <select name="edit_wan_interface" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <select name="edit_wan_interface" id="edit_wan_interface" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                                     <option value="auto">🔄 Automatisch erkennen</option>
-                                    <option value="eth0">eth0 (Ethernet 1)</option>
-                                    <option value="eth1">eth1 (Ethernet 2)</option>
-                                    <option value="wlan0">wlan0 (WiFi)</option>
-                                    <option value="enp0s3">enp0s3 (Virtuell)</option>
                                     <option value="custom">🔧 Benutzerdefiniert</option>
                                 </select>
                             </div>
                             
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">LAN-Interface (Server)</label>
-                                <select name="edit_lan_interface" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <select name="edit_lan_interface" id="edit_lan_interface" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                                     <option value="auto">🔄 Automatisch erkennen</option>
-                                    <option value="eth1">eth1 (Ethernet 2)</option>
-                                    <option value="eth0">eth0 (Ethernet 1)</option>
-                                    <option value="wlan1">wlan1 (WiFi AP)</option>
-                                    <option value="enp0s8">enp0s8 (Virtuell)</option>
                                     <option value="custom">🔧 Benutzerdefiniert</option>
                                 </select>
                             </div>

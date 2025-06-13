@@ -291,6 +291,84 @@ class NetworkUtils:
     _interface_cache_time = 0
     
     @staticmethod
+    def get_current_interfaces() -> Dict[str, Optional[str]]:
+        """
+        Ermittelt die aktuell verwendeten WAN- und LAN-Interfaces
+        
+        Returns:
+            Dictionary mit wan und lan Interface-Namen
+        """
+        current = {'wan': None, 'lan': None}
+        
+        try:
+            # Versuche WAN-Interface über Default-Route zu ermitteln
+            result = subprocess.run(['ip', 'route', 'show', 'default'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if 'default via' in line and 'dev' in line:
+                        parts = line.split()
+                        if 'dev' in parts:
+                            dev_index = parts.index('dev')
+                            if dev_index + 1 < len(parts):
+                                current['wan'] = parts[dev_index + 1]
+                                break
+            
+            # LAN-Interface über WireGuard-Konfiguration ermitteln
+            if os.path.exists('/etc/wireguard/wg0.conf'):
+                with open('/etc/wireguard/wg0.conf', 'r') as f:
+                    content = f.read()
+                    # Suche nach PostUp/PostDown Regeln mit Interface-Namen
+                    for line in content.split('\n'):
+                        if 'MASQUERADE' in line and '-o' in line:
+                            parts = line.split()
+                            if '-o' in parts:
+                                o_index = parts.index('-o')
+                                if o_index + 1 < len(parts):
+                                    current['lan'] = parts[o_index + 1]
+                                    break
+            
+            # Fallback: Versuche über aktive Interfaces zu raten
+            if not current['lan']:
+                # Suche nach Interface mit 10.0.0.x oder 10.8.0.x IP
+                active_interfaces = NetworkUtils._get_interface_with_ip_range(['10.0.0.', '10.8.0.'])
+                if active_interfaces:
+                    current['lan'] = active_interfaces[0]
+                    
+        except Exception as e:
+            logger.debug(f"Error detecting current interfaces: {e}")
+        
+        return current
+    
+    @staticmethod
+    def _get_interface_with_ip_range(ip_prefixes: List[str]) -> List[str]:
+        """Findet Interfaces mit IPs in bestimmten Bereichen"""
+        matching_interfaces = []
+        try:
+            result = subprocess.run(['ip', 'addr', 'show'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                current_interface = None
+                for line in result.stdout.split('\n'):
+                    line = line.strip()
+                    # Interface-Name erkennen
+                    if line and not line.startswith(' ') and ':' in line:
+                        parts = line.split(':')
+                        if len(parts) >= 2:
+                            current_interface = parts[1].strip().split('@')[0]
+                    # IP-Adressen prüfen
+                    elif 'inet ' in line and current_interface:
+                        for prefix in ip_prefixes:
+                            if f'inet {prefix}' in line:
+                                if current_interface not in matching_interfaces:
+                                    matching_interfaces.append(current_interface)
+                                break
+        except Exception as e:
+            logger.debug(f"Error finding interfaces with IP range: {e}")
+        
+        return matching_interfaces
+
+    @staticmethod
     def get_available_interfaces(use_cache: bool = True) -> Dict:
         """
         Ermittelt verfügbare Netzwerkschnittstellen des Systems mit Caching

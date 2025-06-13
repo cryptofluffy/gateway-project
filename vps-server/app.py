@@ -916,12 +916,15 @@ def api_clients():
 @app.route('/api/network-interfaces', methods=['GET'])
 @limiter.limit("5 per minute")
 def api_network_interfaces():
-    """API: Verfügbare Netzwerkschnittstellen abrufen"""
+    """API: Verfügbare Netzwerkschnittstellen mit aktueller Konfiguration"""
     try:
         interfaces = NetworkUtils.get_available_interfaces()
+        current_interfaces = NetworkUtils.get_current_interfaces()
+        
         return jsonify({
             'success': True,
-            'interfaces': interfaces
+            'interfaces': interfaces,
+            'current': current_interfaces
         })
     except Exception as e:
         logger.error(f"Error getting network interfaces: {e}")
