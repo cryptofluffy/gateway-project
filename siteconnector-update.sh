@@ -97,8 +97,10 @@ if [ "$SYSTEM_TYPE" = "vps" ]; then
     
     # Systemd-Service erstellen/aktualisieren
     echo "📋 SiteConnector VPS Service konfigurieren..."
-    cp /tmp/siteconnector-update/vps-server/systemd/wireguard-vps.service /etc/systemd/system/ 2>/dev/null || \
-    cat > /etc/systemd/system/siteconnector-vps.service << EOF
+    if [ -f "/tmp/siteconnector-update/vps-server/systemd/wireguard-vps.service" ]; then
+        cp /tmp/siteconnector-update/vps-server/systemd/wireguard-vps.service /etc/systemd/system/siteconnector-vps.service
+    else
+        cat > /etc/systemd/system/siteconnector-vps.service << EOF
 [Unit]
 Description=SiteConnector VPS Server
 After=network.target wg-quick@wg0.service
@@ -116,6 +118,7 @@ WatchdogSec=30
 [Install]
 WantedBy=multi-user.target
 EOF
+    fi
     
     # Backwards compatibility
     ln -sf /etc/systemd/system/siteconnector-vps.service /etc/systemd/system/wireguard-vps.service 2>/dev/null || true
