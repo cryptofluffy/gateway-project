@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Topology - Interactive Mode</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #00ff88;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .topology-container {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 80px);
+            background: radial-gradient(circle at 50% 50%, rgba(0, 255, 136, 0.05) 0%, transparent 70%);
+        }
+
+        .node {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #00ff88;
+            border-radius: 12px;
+            padding: 15px;
+            min-width: 150px;
+            cursor: move;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .node:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(0, 255, 136, 0.3);
+        }
+
+        .node.server {
+            border-color: #ff6b35;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .node.gateway {
+            border-color: #4dabf7;
+        }
+
+        .node.client {
+            border-color: #69db7c;
+        }
+
+        .node-title {
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+
+        .node-info {
+            font-size: 12px;
+            color: #aaa;
+            line-height: 1.4;
+        }
+
+        .connection {
+            position: absolute;
+            height: 2px;
+            background: linear-gradient(90deg, #00ff88, #4dabf7);
+            transform-origin: left center;
+            opacity: 0.6;
+            transition: opacity 0.3s ease;
+        }
+
+        .connection.active {
+            opacity: 1;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid #00ff88;
+            color: #00ff88;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: rgba(0, 255, 136, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .stats {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .stats h3 {
+            color: #00ff88;
+            margin-bottom: 10px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌐 Network Topology - Interactive Mode</h1>
+        <div class="controls">
+            <button class="btn" onclick="autoArrange()">Auto Arrange</button>
+            <button class="btn" onclick="addNode()">Add Node</button>
+            <button class="btn" onclick="toggleConnections()">Toggle Connections</button>
+        </div>
+    </div>
+
+    <div class="topology-container" id="topology">
+        <!-- VPS Server (Center) -->
+        <div class="node server" id="vps-server" style="top: 50%; left: 50%;">
+            <div class="node-title">🖥️ VPS Server</div>
+            <div class="node-info">
+                IP: 192.168.1.1<br>
+                Status: Online<br>
+                Load: 45%
+            </div>
+        </div>
+
+        <!-- Gateway Nodes -->
+        <div class="node gateway" id="gateway-1" style="top: 20%; left: 30%;">
+            <div class="node-title">🌐 Gateway Hamburg</div>
+            <div class="node-info">
+                IP: 10.8.0.2<br>
+                Clients: 12<br>
+                Bandwidth: 100 Mbps
+            </div>
+        </div>
+
+        <div class="node gateway" id="gateway-2" style="top: 80%; left: 70%;">
+            <div class="node-title">🌐 Gateway Berlin</div>
+            <div class="node-info">
+                IP: 10.8.0.3<br>
+                Clients: 8<br>
+                Bandwidth: 50 Mbps
+            </div>
+        </div>
+
+        <!-- Client Nodes -->
+        <div class="node client" id="client-1" style="top: 10%; left: 10%;">
+            <div class="node-title">💻 Client PC 1</div>
+            <div class="node-info">
+                IP: 192.168.1.100<br>
+                Status: Connected<br>
+                Traffic: 2.3 MB/s
+            </div>
+        </div>
+
+        <div class="node client" id="client-2" style="top: 30%; left: 80%;">
+            <div class="node-title">📱 Mobile Client</div>
+            <div class="node-info">
+                IP: 192.168.1.101<br>
+                Status: Connected<br>
+                Traffic: 0.8 MB/s
+            </div>
+        </div>
+
+        <div class="node client" id="client-3" style="top: 70%; left: 20%;">
+            <div class="node-title">💻 Office PC</div>
+            <div class="node-info">
+                IP: 192.168.1.102<br>
+                Status: Disconnected<br>
+                Traffic: 0 MB/s
+            </div>
+        </div>
+    </div>
+
+    <div class="stats">
+        <h3>📊 Network Statistics</h3>
+        <div class="stat-item">
+            <span>Total Nodes:</span>
+            <span id="node-count">6</span>
+        </div>
+        <div class="stat-item">
+            <span>Active Connections:</span>
+            <span id="connection-count">4</span>
+        </div>
+        <div class="stat-item">
+            <span>Total Bandwidth:</span>
+            <span id="total-bandwidth">150 Mbps</span>
+        </div>
+        <div class="stat-item">
+            <span>Network Load:</span>
+            <span id="network-load">67%</span>
+        </div>
+    </div>
+
+    <script>
+        let isDragging = false;
+        let currentNode = null;
+        let connections = [];
+        let showConnections = true;
+
+        // Initialize drag and drop
+        document.querySelectorAll('.node').forEach(node => {
+            node.addEventListener('mousedown', startDrag);
+        });
+
+        function startDrag(e) {
+            isDragging = true;
+            currentNode = e.target.closest('.node');
+            currentNode.style.zIndex = 1000;
+            
+            const startX = e.clientX - currentNode.offsetLeft;
+            const startY = e.clientY - currentNode.offsetTop;
+
+            function drag(e) {
+                if (!isDragging) return;
+                
+                const newX = e.clientX - startX;
+                const newY = e.clientY - startY;
+                
+                currentNode.style.left = newX + 'px';
+                currentNode.style.top = newY + 'px';
+                
+                updateConnections();
+            }
+
+            function stopDrag() {
+                isDragging = false;
+                currentNode.style.zIndex = 'auto';
+                currentNode = null;
+                document.removeEventListener('mousemove', drag);
+                document.removeEventListener('mouseup', stopDrag);
+            }
+
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDrag);
+        }
+
+        function updateConnections() {
+            // Clear existing connections
+            document.querySelectorAll('.connection').forEach(conn => conn.remove());
+            
+            if (!showConnections) return;
+
+            const nodes = document.querySelectorAll('.node');
+            const server = document.getElementById('vps-server');
+            
+            nodes.forEach(node => {
+                if (node.id !== 'vps-server') {
+                    createConnection(server, node);
+                }
+            });
+        }
+
+        function createConnection(node1, node2) {
+            const rect1 = node1.getBoundingClientRect();
+            const rect2 = node2.getBoundingClientRect();
+            const container = document.getElementById('topology').getBoundingClientRect();
+            
+            const x1 = rect1.left + rect1.width / 2 - container.left;
+            const y1 = rect1.top + rect1.height / 2 - container.top;
+            const x2 = rect2.left + rect2.width / 2 - container.left;
+            const y2 = rect2.top + rect2.height / 2 - container.top;
+            
+            const distance = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+            const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+            
+            const connection = document.createElement('div');
+            connection.className = 'connection active';
+            connection.style.left = x1 + 'px';
+            connection.style.top = y1 + 'px';
+            connection.style.width = distance + 'px';
+            connection.style.transform = `rotate(${angle}deg)`;
+            
+            document.getElementById('topology').appendChild(connection);
+        }
+
+        function autoArrange() {
+            const nodes = document.querySelectorAll('.node:not(#vps-server)');
+            const center = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+            const radius = 200;
+            
+            nodes.forEach((node, index) => {
+                const angle = (index / nodes.length) * 2 * Math.PI;
+                const x = center.x + Math.cos(angle) * radius;
+                const y = center.y + Math.sin(angle) * radius;
+                
+                node.style.left = x + 'px';
+                node.style.top = y + 'px';
+                node.style.transition = 'all 1s ease';
+            });
+            
+            setTimeout(() => {
+                updateConnections();
+                nodes.forEach(node => {
+                    node.style.transition = 'all 0.3s ease';
+                });
+            }, 1000);
+        }
+
+        function toggleConnections() {
+            showConnections = !showConnections;
+            updateConnections();
+        }
+
+        function addNode() {
+            const nodeCount = document.querySelectorAll('.node').length;
+            const newNode = document.createElement('div');
+            newNode.className = 'node client';
+            newNode.id = `client-${nodeCount}`;
+            newNode.style.top = '50%';
+            newNode.style.left = '20%';
+            newNode.innerHTML = `
+                <div class="node-title">💻 New Client ${nodeCount}</div>
+                <div class="node-info">
+                    IP: 192.168.1.${100 + nodeCount}<br>
+                    Status: Connected<br>
+                    Traffic: 1.2 MB/s
+                </div>
+            `;
+            
+            newNode.addEventListener('mousedown', startDrag);
+            document.getElementById('topology').appendChild(newNode);
+            
+            updateConnections();
+            document.getElementById('node-count').textContent = document.querySelectorAll('.node').length;
+        }
+
+        // Initialize connections on load
+        updateConnections();
+
+        // Auto-update stats
+        setInterval(() => {
+            const load = Math.floor(Math.random() * 30) + 50;
+            document.getElementById('network-load').textContent = load + '%';
+            
+            const bandwidth = Math.floor(Math.random() * 50) + 100;
+            document.getElementById('total-bandwidth').textContent = bandwidth + ' Mbps';
+        }, 3000);
+    </script>
+</body>
+</html>

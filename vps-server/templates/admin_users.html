@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Benutzerverwaltung - VPN Gateway Pro</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 0;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logout-btn {
+            background: #dc3545;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        .page-title {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .actions-bar {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .search-box input {
+            padding: 10px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            width: 250px;
+            font-size: 1rem;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .users-table {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .table-header {
+            background: #667eea;
+            color: white;
+            padding: 1rem 1.5rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #e1e5e9;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-locked {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .role-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .role-admin {
+            background: #dc3545;
+            color: white;
+        }
+
+        .role-user {
+            background: #28a745;
+            color: white;
+        }
+
+        .role-manager {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            text-decoration: none;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            min-width: 400px;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal h2 {
+            margin-bottom: 1.5rem;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 2rem;
+            gap: 0.5rem;
+        }
+
+        .pagination button {
+            padding: 8px 12px;
+            border: 1px solid #dee2e6;
+            background: white;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .pagination button.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 768px) {
+            .actions-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .search-box {
+                justify-content: center;
+            }
+
+            .search-box input {
+                width: 100%;
+            }
+
+            table {
+                font-size: 0.9rem;
+            }
+
+            .modal-content {
+                margin: 1rem;
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">
+                🔒 VPN Gateway Pro
+            </div>
+            <div class="user-info">
+                <span>Angemeldet als: <strong id="current-user">Admin</strong></span>
+                <a href="/api/auth/logout" class="logout-btn">Abmelden</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h1 class="page-title">
+            👥 Benutzerverwaltung
+        </h1>
+
+        <div class="stats-cards">
+            <div class="stat-card">
+                <div class="stat-value" id="total-users">0</div>
+                <div class="stat-label">Gesamt Benutzer</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="active-users">0</div>
+                <div class="stat-label">Aktive Benutzer</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="admin-users">0</div>
+                <div class="stat-label">Administratoren</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="locked-users">0</div>
+                <div class="stat-label">Gesperrte Accounts</div>
+            </div>
+        </div>
+
+        <div class="actions-bar">
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="🔍 Benutzer suchen...">
+                <button class="btn btn-secondary" onclick="clearSearch()">Zurücksetzen</button>
+            </div>
+            <div style="display: flex; gap: 1rem;">
+                <button class="btn btn-success" onclick="openCreateUserModal()">
+                    ➕ Neuer Benutzer
+                </button>
+                <button class="btn btn-primary" onclick="refreshUsers()">
+                    🔄 Aktualisieren
+                </button>
+                <button class="btn btn-warning" onclick="exportUsers()">
+                    📊 Export
+                </button>
+            </div>
+        </div>
+
+        <div class="users-table">
+            <div class="table-header">
+                👥 Benutzerübersicht
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Benutzer</th>
+                        <th>E-Mail</th>
+                        <th>Rolle</th>
+                        <th>Status</th>
+                        <th>Erstellt</th>
+                        <th>Letzter Login</th>
+                        <th>Aktionen</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table-body">
+                    <!-- Dynamisch geladen -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination" id="pagination">
+            <!-- Dynamisch generiert -->
+        </div>
+    </div>
+
+    <!-- Create/Edit User Modal -->
+    <div class="modal" id="user-modal">
+        <div class="modal-content">
+            <h2 id="modal-title">Neuen Benutzer erstellen</h2>
+            <form id="user-form">
+                <input type="hidden" id="user-id">
+                
+                <div class="form-group">
+                    <label for="username">Benutzername</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">E-Mail</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                
+                <div class="form-group" id="password-group">
+                    <label for="password">Passwort</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="role">Rolle</label>
+                    <select id="role" name="role" required>
+                        <option value="user">Benutzer</option>
+                        <option value="manager">Manager</option>
+                        <option value="admin">Administrator</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="is_active">Status</label>
+                    <select id="is_active" name="is_active">
+                        <option value="1">Aktiv</option>
+                        <option value="0">Inaktiv</option>
+                    </select>
+                </div>
+                
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">
+                        Abbrechen
+                    </button>
+                    <button type="submit" class="btn btn-success">
+                        💾 Speichern
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let currentUsers = [];
+        let filteredUsers = [];
+        let currentPage = 1;
+        const usersPerPage = 10;
+
+        // Seite laden
+        document.addEventListener('DOMContentLoaded', function() {
+            loadUsers();
+            
+            // Such-Event
+            document.getElementById('search-input').addEventListener('input', filterUsers);
+            
+            // Form-Event
+            document.getElementById('user-form').addEventListener('submit', handleUserSubmit);
+        });
+
+        async function loadUsers() {
+            try {
+                const response = await fetch('/api/admin/users', {
+                    headers: {
+                        'Authorization': `Bearer ${getSessionToken()}`
+                    }
+                });
+                
+                if (response.ok) {
+                    currentUsers = await response.json();
+                    filteredUsers = [...currentUsers];
+                    updateStats();
+                    renderUsers();
+                } else {
+                    console.error('Failed to load users');
+                }
+            } catch (error) {
+                console.error('Error loading users:', error);
+            }
+        }
+
+        function updateStats() {
+            const totalUsers = currentUsers.length;
+            const activeUsers = currentUsers.filter(u => u.is_active).length;
+            const adminUsers = currentUsers.filter(u => u.role === 'admin').length;
+            const lockedUsers = currentUsers.filter(u => u.locked_until).length;
+            
+            document.getElementById('total-users').textContent = totalUsers;
+            document.getElementById('active-users').textContent = activeUsers;
+            document.getElementById('admin-users').textContent = adminUsers;
+            document.getElementById('locked-users').textContent = lockedUsers;
+        }
+
+        function filterUsers() {
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            filteredUsers = currentUsers.filter(user => 
+                user.username.toLowerCase().includes(searchTerm) ||
+                user.email.toLowerCase().includes(searchTerm) ||
+                user.role.toLowerCase().includes(searchTerm)
+            );
+            currentPage = 1;
+            renderUsers();
+        }
+
+        function renderUsers() {
+            const tbody = document.getElementById('users-table-body');
+            const startIndex = (currentPage - 1) * usersPerPage;
+            const endIndex = startIndex + usersPerPage;
+            const usersToShow = filteredUsers.slice(startIndex, endIndex);
+            
+            tbody.innerHTML = usersToShow.map(user => `
+                <tr>
+                    <td>
+                        <strong>${user.username}</strong>
+                    </td>
+                    <td>${user.email}</td>
+                    <td>
+                        <span class="role-badge role-${user.role}">${getRoleText(user.role)}</span>
+                    </td>
+                    <td>
+                        <span class="status-badge ${getStatusClass(user)}">${getStatusText(user)}</span>
+                    </td>
+                    <td>${formatDate(user.created_at)}</td>
+                    <td>${user.last_login ? formatDate(user.last_login) : 'Nie'}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="action-btn btn-primary" onclick="editUser(${user.id})">
+                                ✏️ Bearbeiten
+                            </button>
+                            <button class="action-btn btn-warning" onclick="resetPassword(${user.id})">
+                                🔑 Passwort
+                            </button>
+                            <button class="action-btn btn-danger" onclick="deleteUser(${user.id})">
+                                🗑️ Löschen
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+            
+            renderPagination();
+        }
+
+        function renderPagination() {
+            const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
+            const pagination = document.getElementById('pagination');
+            
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+            
+            let paginationHTML = '';
+            
+            // Previous button
+            paginationHTML += `<button onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹ Zurück</button>`;
+            
+            // Page numbers
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === currentPage || i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+                    paginationHTML += `<button onclick="changePage(${i})" ${i === currentPage ? 'class="active"' : ''}>${i}</button>`;
+                } else if (i === currentPage - 2 || i === currentPage + 2) {
+                    paginationHTML += '<button disabled>...</button>';
+                }
+            }
+            
+            // Next button
+            paginationHTML += `<button onclick="changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Weiter ›</button>`;
+            
+            pagination.innerHTML = paginationHTML;
+        }
+
+        function changePage(page) {
+            const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
+            if (page >= 1 && page <= totalPages) {
+                currentPage = page;
+                renderUsers();
+            }
+        }
+
+        function openCreateUserModal() {
+            document.getElementById('modal-title').textContent = 'Neuen Benutzer erstellen';
+            document.getElementById('user-form').reset();
+            document.getElementById('user-id').value = '';
+            document.getElementById('password-group').style.display = 'block';
+            document.getElementById('password').required = true;
+            document.getElementById('user-modal').style.display = 'block';
+        }
+
+        function editUser(userId) {
+            const user = currentUsers.find(u => u.id === userId);
+            if (!user) return;
+            
+            document.getElementById('modal-title').textContent = 'Benutzer bearbeiten';
+            document.getElementById('user-id').value = user.id;
+            document.getElementById('username').value = user.username;
+            document.getElementById('email').value = user.email;
+            document.getElementById('role').value = user.role;
+            document.getElementById('is_active').value = user.is_active ? '1' : '0';
+            document.getElementById('password-group').style.display = 'none';
+            document.getElementById('password').required = false;
+            document.getElementById('user-modal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('user-modal').style.display = 'none';
+        }
+
+        async function handleUserSubmit(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const userId = formData.get('user-id');
+            const isEdit = !!userId;
+            
+            const userData = {
+                username: formData.get('username'),
+                email: formData.get('email'),
+                role: formData.get('role'),
+                is_active: formData.get('is_active') === '1'
+            };
+            
+            if (!isEdit) {
+                userData.password = formData.get('password');
+            }
+            
+            try {
+                const url = isEdit ? `/api/admin/users/${userId}` : '/api/admin/users';
+                const method = isEdit ? 'PUT' : 'POST';
+                
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${getSessionToken()}`
+                    },
+                    body: JSON.stringify(userData)
+                });
+                
+                if (response.ok) {
+                    closeModal();
+                    loadUsers();
+                    alert(isEdit ? 'Benutzer erfolgreich aktualisiert!' : 'Benutzer erfolgreich erstellt!');
+                } else {
+                    const error = await response.json();
+                    alert('Fehler: ' + (error.error || 'Unbekannter Fehler'));
+                }
+            } catch (error) {
+                console.error('Error saving user:', error);
+                alert('Verbindungsfehler beim Speichern');
+            }
+        }
+
+        async function deleteUser(userId) {
+            const user = currentUsers.find(u => u.id === userId);
+            if (!user) return;
+            
+            if (!confirm(`Möchten Sie den Benutzer "${user.username}" wirklich löschen?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/admin/users/${userId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${getSessionToken()}`
+                    }
+                });
+                
+                if (response.ok) {
+                    loadUsers();
+                    alert('Benutzer erfolgreich gelöscht!');
+                } else {
+                    alert('Fehler beim Löschen des Benutzers');
+                }
+            } catch (error) {
+                console.error('Error deleting user:', error);
+                alert('Verbindungsfehler beim Löschen');
+            }
+        }
+
+        async function resetPassword(userId) {
+            const user = currentUsers.find(u => u.id === userId);
+            if (!user) return;
+            
+            const newPassword = prompt(`Neues Passwort für "${user.username}" eingeben:`);
+            if (!newPassword) return;
+            
+            try {
+                const response = await fetch(`/api/admin/users/${userId}/reset-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${getSessionToken()}`
+                    },
+                    body: JSON.stringify({ new_password: newPassword })
+                });
+                
+                if (response.ok) {
+                    alert('Passwort erfolgreich zurückgesetzt!');
+                } else {
+                    alert('Fehler beim Zurücksetzen des Passworts');
+                }
+            } catch (error) {
+                console.error('Error resetting password:', error);
+                alert('Verbindungsfehler beim Zurücksetzen');
+            }
+        }
+
+        function refreshUsers() {
+            loadUsers();
+        }
+
+        function clearSearch() {
+            document.getElementById('search-input').value = '';
+            filterUsers();
+        }
+
+        function exportUsers() {
+            const csvContent = generateCSV(currentUsers);
+            downloadCSV(csvContent, 'users.csv');
+        }
+
+        // Utility functions
+        function getRoleText(role) {
+            const roles = {
+                'admin': 'Administrator',
+                'manager': 'Manager',
+                'user': 'Benutzer'
+            };
+            return roles[role] || role;
+        }
+
+        function getStatusClass(user) {
+            if (user.locked_until) return 'status-locked';
+            return user.is_active ? 'status-active' : 'status-inactive';
+        }
+
+        function getStatusText(user) {
+            if (user.locked_until) return 'Gesperrt';
+            return user.is_active ? 'Aktiv' : 'Inaktiv';
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return 'Nie';
+            return new Date(dateString).toLocaleDateString('de-DE', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function getSessionToken() {
+            return localStorage.getItem('session_token') || sessionStorage.getItem('session_token');
+        }
+
+        function generateCSV(users) {
+            const headers = ['Username', 'Email', 'Role', 'Active', 'Created', 'Last Login'];
+            const rows = users.map(user => [
+                user.username,
+                user.email,
+                user.role,
+                user.is_active ? 'Yes' : 'No',
+                user.created_at,
+                user.last_login || 'Never'
+            ]);
+            
+            return [headers, ...rows].map(row => row.join(',')).join('\n');
+        }
+
+        function downloadCSV(content, filename) {
+            const blob = new Blob([content], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Modal schließen bei Klick außerhalb
+        window.onclick = function(event) {
+            const modal = document.getElementById('user-modal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+</html>

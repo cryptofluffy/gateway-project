@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Traffic Flow Visualization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #00ff88;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 30px;
+            color: #aaa;
+            font-size: 14px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .flow-container {
+            display: flex;
+            height: calc(100vh - 80px);
+            position: relative;
+        }
+
+        .flow-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 40px 20px;
+        }
+
+        .section-title {
+            position: absolute;
+            top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #00ff88;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sources { background: linear-gradient(135deg, rgba(0, 123, 255, 0.1) 0%, transparent 100%); }
+        .gateways { background: linear-gradient(135deg, rgba(0, 255, 136, 0.1) 0%, transparent 100%); }
+        .destinations { background: linear-gradient(135deg, rgba(255, 107, 53, 0.1) 0%, transparent 100%); }
+
+        .flow-node {
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            min-width: 200px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .flow-node:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(0, 255, 136, 0.3);
+        }
+
+        .sources .flow-node { border-color: #007bff; }
+        .gateways .flow-node { border-color: #00ff88; }
+        .destinations .flow-node { border-color: #ff6b35; }
+
+        .node-title {
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .node-ip {
+            color: #aaa;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .node-traffic {
+            font-size: 12px;
+            color: #00ff88;
+            font-weight: bold;
+        }
+
+        .flow-line {
+            position: absolute;
+            height: 3px;
+            background: linear-gradient(90deg, #007bff, #00ff88, #ff6b35);
+            border-radius: 2px;
+            opacity: 0.8;
+            animation: flow 3s infinite linear;
+        }
+
+        @keyframes flow {
+            0% {
+                transform: translateX(-100%);
+                opacity: 0;
+            }
+            10% {
+                opacity: 0.8;
+            }
+            90% {
+                opacity: 0.8;
+            }
+            100% {
+                transform: translateX(100vw);
+                opacity: 0;
+            }
+        }
+
+        .flow-statistics {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            min-width: 250px;
+        }
+
+        .flow-statistics h3 {
+            color: #00ff88;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .stat-label {
+            color: #aaa;
+        }
+
+        .stat-data {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .traffic-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .control-btn {
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid #00ff88;
+            color: #00ff88;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-btn:hover {
+            background: rgba(0, 255, 136, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .control-btn.active {
+            background: rgba(0, 255, 136, 0.4);
+            border-color: #fff;
+        }
+
+        .flow-particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #00ff88;
+            border-radius: 50%;
+            animation: particle-flow 4s infinite linear;
+            opacity: 0;
+        }
+
+        @keyframes particle-flow {
+            0% {
+                transform: translateX(0);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateX(100vw);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌊 VPN Traffic Flow Visualization</h1>
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-value" id="connections">3</div>
+                <div>Connections</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="throughput">101.2 MB/s</div>
+                <div>Throughput</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="active-flows">3</div>
+                <div>Active Flows</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="flow-container">
+        <!-- Sources Section -->
+        <div class="flow-section sources">
+            <div class="section-title">🖥️ SOURCES</div>
+            
+            <div class="flow-node" data-ip="192.168.1.100">
+                <div class="node-title">💻 Client PC 1</div>
+                <div class="node-ip">192.168.1.100</div>
+                <div class="node-traffic">↑ 15.2 MB/s</div>
+            </div>
+
+            <div class="flow-node" data-ip="192.168.1.101">
+                <div class="node-title">📱 Mobile Client</div>
+                <div class="node-ip">192.168.1.101</div>
+                <div class="node-traffic">↑ 8.7 MB/s</div>
+            </div>
+
+            <div class="flow-node" data-ip="192.168.1.102">
+                <div class="node-title">💻 Office PC</div>
+                <div class="node-ip">192.168.1.102</div>
+                <div class="node-traffic">↑ 22.1 MB/s</div>
+            </div>
+        </div>
+
+        <!-- Gateways Section -->
+        <div class="flow-section gateways">
+            <div class="section-title">🌐 GATEWAYS</div>
+            
+            <div class="flow-node" data-ip="10.8.0.1">
+                <div class="node-title">🌐 Gateway Pi</div>
+                <div class="node-ip">10.8.0.1</div>
+                <div class="node-traffic">↕ 46.0 MB/s</div>
+            </div>
+
+            <div class="flow-node" data-ip="vpn.example.com">
+                <div class="node-title">☁️ VPS Server</div>
+                <div class="node-ip">vpn.example.com</div>
+                <div class="node-traffic">↕ 55.2 MB/s</div>
+            </div>
+        </div>
+
+        <!-- Destinations Section -->
+        <div class="flow-section destinations">
+            <div class="section-title">🎯 DESTINATIONS</div>
+            
+            <div class="flow-node" data-ip="0.0.0.0/0">
+                <div class="node-title">🌍 Internet</div>
+                <div class="node-ip">0.0.0.0/0</div>
+                <div class="node-traffic">↓ 38.9 MB/s</div>
+            </div>
+
+            <div class="flow-node" data-ip="10.0.0.0/24">
+                <div class="node-title">🏢 Internal Network</div>
+                <div class="node-ip">10.0.0.0/24</div>
+                <div class="node-traffic">↓ 12.3 MB/s</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="flow-statistics">
+        <h3>📊 Flow Statistics</h3>
+        <div class="stat-row">
+            <span class="stat-label">Total Bandwidth:</span>
+            <span class="stat-data" id="total-bandwidth">809 Mbps</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Peak Traffic:</span>
+            <span class="stat-data" id="peak-traffic">55.3 MB/s</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Active Routes:</span>
+            <span class="stat-data" id="active-routes">3</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Packet Loss:</span>
+            <span class="stat-data" id="packet-loss">0.41%</span>
+        </div>
+    </div>
+
+    <div class="traffic-controls">
+        <button class="control-btn active" onclick="toggleAnimation()">
+            📊 Toggle Animation
+        </button>
+        <button class="control-btn" onclick="addSource()">
+            🖥️ Add Source
+        </button>
+        <button class="control-btn" onclick="addDestination()">
+            🎯 Add Destination
+        </button>
+        <button class="control-btn" onclick="simulateTraffic()">
+            🔄 Simulate Traffic
+        </button>
+        <button class="control-btn" onclick="clearFlows()">
+            🗑️ Clear Flows
+        </button>
+        <button class="control-btn" onclick="exportConfig()">
+            📄 Export Config
+        </button>
+    </div>
+
+    <script>
+        let animationEnabled = true;
+        let flowInterval;
+        let particleInterval;
+
+        function createFlowLine() {
+            if (!animationEnabled) return;
+
+            const flowLine = document.createElement('div');
+            flowLine.className = 'flow-line';
+            
+            // Random vertical position
+            const top = Math.random() * (window.innerHeight - 200) + 100;
+            flowLine.style.top = top + 'px';
+            flowLine.style.left = '0px';
+            flowLine.style.width = '200px';
+            
+            document.body.appendChild(flowLine);
+            
+            // Remove after animation
+            setTimeout(() => {
+                if (flowLine.parentNode) {
+                    flowLine.parentNode.removeChild(flowLine);
+                }
+            }, 3000);
+        }
+
+        function createFlowParticle() {
+            if (!animationEnabled) return;
+
+            const particle = document.createElement('div');
+            particle.className = 'flow-particle';
+            
+            // Random vertical position
+            const top = Math.random() * (window.innerHeight - 200) + 100;
+            particle.style.top = top + 'px';
+            particle.style.left = '0px';
+            
+            // Random color
+            const colors = ['#00ff88', '#007bff', '#ff6b35', '#69db7c', '#ffd43b'];
+            particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+            
+            document.body.appendChild(particle);
+            
+            // Remove after animation
+            setTimeout(() => {
+                if (particle.parentNode) {
+                    particle.parentNode.removeChild(particle);
+                }
+            }, 4000);
+        }
+
+        function toggleAnimation() {
+            animationEnabled = !animationEnabled;
+            const btn = event.target;
+            
+            if (animationEnabled) {
+                btn.classList.add('active');
+                startAnimations();
+            } else {
+                btn.classList.remove('active');
+                stopAnimations();
+            }
+        }
+
+        function startAnimations() {
+            flowInterval = setInterval(createFlowLine, 1000);
+            particleInterval = setInterval(createFlowParticle, 300);
+        }
+
+        function stopAnimations() {
+            clearInterval(flowInterval);
+            clearInterval(particleInterval);
+        }
+
+        function addSource() {
+            const sourcesSection = document.querySelector('.sources');
+            const nodeCount = sourcesSection.querySelectorAll('.flow-node').length + 1;
+            
+            const newNode = document.createElement('div');
+            newNode.className = 'flow-node';
+            newNode.innerHTML = `
+                <div class="node-title">💻 New Client ${nodeCount}</div>
+                <div class="node-ip">192.168.1.${100 + nodeCount}</div>
+                <div class="node-traffic">↑ ${(Math.random() * 20 + 5).toFixed(1)} MB/s</div>
+            `;
+            
+            sourcesSection.appendChild(newNode);
+            updateStats();
+        }
+
+        function addDestination() {
+            const destSection = document.querySelector('.destinations');
+            const nodeCount = destSection.querySelectorAll('.flow-node').length + 1;
+            
+            const newNode = document.createElement('div');
+            newNode.className = 'flow-node';
+            newNode.innerHTML = `
+                <div class="node-title">🎯 New Target ${nodeCount}</div>
+                <div class="node-ip">10.${nodeCount}.0.0/24</div>
+                <div class="node-traffic">↓ ${(Math.random() * 15 + 3).toFixed(1)} MB/s</div>
+            `;
+            
+            destSection.appendChild(newNode);
+            updateStats();
+        }
+
+        function simulateTraffic() {
+            // Simulate traffic spike
+            document.querySelectorAll('.node-traffic').forEach(node => {
+                const currentValue = parseFloat(node.textContent.match(/[\d.]+/)[0]);
+                const newValue = (currentValue * (1 + Math.random() * 0.5)).toFixed(1);
+                const direction = node.textContent.includes('↑') ? '↑' : 
+                                 node.textContent.includes('↓') ? '↓' : '↕';
+                node.textContent = `${direction} ${newValue} MB/s`;
+            });
+            
+            updateStats();
+            
+            // Create burst of particles
+            for (let i = 0; i < 10; i++) {
+                setTimeout(createFlowParticle, i * 100);
+            }
+        }
+
+        function clearFlows() {
+            document.querySelectorAll('.flow-line, .flow-particle').forEach(el => {
+                el.remove();
+            });
+        }
+
+        function exportConfig() {
+            const config = {
+                sources: [],
+                gateways: [],
+                destinations: []
+            };
+            
+            document.querySelectorAll('.sources .flow-node').forEach(node => {
+                config.sources.push({
+                    title: node.querySelector('.node-title').textContent,
+                    ip: node.querySelector('.node-ip').textContent,
+                    traffic: node.querySelector('.node-traffic').textContent
+                });
+            });
+            
+            document.querySelectorAll('.gateways .flow-node').forEach(node => {
+                config.gateways.push({
+                    title: node.querySelector('.node-title').textContent,
+                    ip: node.querySelector('.node-ip').textContent,
+                    traffic: node.querySelector('.node-traffic').textContent
+                });
+            });
+            
+            document.querySelectorAll('.destinations .flow-node').forEach(node => {
+                config.destinations.push({
+                    title: node.querySelector('.node-title').textContent,
+                    ip: node.querySelector('.node-ip').textContent,
+                    traffic: node.querySelector('.node-traffic').textContent
+                });
+            });
+            
+            const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'traffic-flow-config.json';
+            a.click();
+        }
+
+        function updateStats() {
+            const connections = document.querySelectorAll('.flow-node').length;
+            const activeFlows = Math.floor(connections * 0.8);
+            
+            document.getElementById('connections').textContent = connections;
+            document.getElementById('active-flows').textContent = activeFlows;
+            document.getElementById('active-routes').textContent = activeFlows;
+            
+            // Update random values
+            const throughput = (Math.random() * 50 + 80).toFixed(1);
+            document.getElementById('throughput').textContent = throughput + ' MB/s';
+            
+            const bandwidth = Math.floor(Math.random() * 200 + 600);
+            document.getElementById('total-bandwidth').textContent = bandwidth + ' Mbps';
+            
+            const packetLoss = (Math.random() * 0.5).toFixed(2);
+            document.getElementById('packet-loss').textContent = packetLoss + '%';
+        }
+
+        // Auto-update stats
+        setInterval(updateStats, 5000);
+
+        // Start animations
+        startAnimations();
+
+        // Add click effects to nodes
+        document.querySelectorAll('.flow-node').forEach(node => {
+            node.addEventListener('click', function() {
+                this.style.animation = 'none';
+                this.style.transform = 'scale(1.1)';
+                setTimeout(() => {
+                    this.style.animation = '';
+                    this.style.transform = '';
+                }, 200);
+                
+                // Create burst effect
+                for (let i = 0; i < 5; i++) {
+                    setTimeout(createFlowParticle, i * 50);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

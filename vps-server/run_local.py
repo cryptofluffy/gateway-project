@@ -10,6 +10,7 @@ import json
 import subprocess
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
+from auth_routes import init_auth
 
 # Mock-Version des WireGuard Managers für lokale Entwicklung
 class MockWireGuardManager:
@@ -126,6 +127,9 @@ app.secret_key = 'local-dev-secret-key'
 # Mock Manager initialisieren
 wg_manager = MockWireGuardManager()
 
+# Authentifizierung initialisieren
+auth_system = init_auth(app)
+
 # Routes (gleich wie in der Original-App)
 @app.route('/')
 def dashboard():
@@ -148,6 +152,21 @@ def port_forwards():
     """Port-Weiterleitungen verwalten"""
     return render_template('port_forwards.html', 
                          port_forwards=wg_manager.port_forwards)
+
+@app.route('/network-topology')
+def network_topology():
+    """Network Topology - Interactive Mode"""
+    return render_template('network_topology_test.html')
+
+@app.route('/traffic-flow') 
+def traffic_flow():
+    """VPN Traffic Flow Visualization"""
+    return render_template('traffic_flow_test.html')
+
+@app.route('/location-manager')
+def location_manager():
+    """Multi-Location VPN Manager"""
+    return render_template('location_manager_test.html')
 
 @app.route('/api/status')
 def api_status():
@@ -192,15 +211,166 @@ def api_restart_wireguard():
     """API: WireGuard Interface neu starten (Mock)"""
     return jsonify({'success': True, 'message': 'WireGuard neu gestartet (Mock)'})
 
+@app.route('/api/clients', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def api_clients():
+    """API: Client-Management mit Interface-Konfiguration"""
+    if request.method == 'GET':
+        # Erweitere Mock-Clients um Network Config
+        enhanced_clients = []
+        for client in wg_manager.get_connected_clients():
+            enhanced_client = client.copy()
+            enhanced_client['network_config'] = {
+                'wan_interface': 'auto',
+                'lan_interface': 'auto',
+                'auto_detect': True
+            }
+            enhanced_clients.append(enhanced_client)
+        return jsonify(enhanced_clients)
+    
+    elif request.method == 'POST':
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        location = data.get('location', '').strip()
+        public_key = data.get('public_key', '').strip()
+        network_config = data.get('network_config', {})
+        
+        if not name or not public_key:
+            return jsonify({'success': False, 'message': 'Name und Public Key erforderlich'}), 400
+        
+        # Simuliere das Hinzufügen eines Clients
+        new_client = {
+            'name': name,
+            'location': location,
+            'public_key': public_key,
+            'status': 'connected',
+            'last_handshake': 'just now',
+            'network_config': network_config
+        }
+        
+        wg_manager.clients.append(new_client)
+        return jsonify({'success': True, 'message': f'Gateway "{name}" erfolgreich hinzugefügt'})
+    
+    elif request.method == 'PUT':
+        data = request.get_json()
+        public_key = data.get('public_key')
+        
+        # Finde und aktualisiere Client
+        for i, client in enumerate(wg_manager.clients):
+            if client.get('public_key') == public_key:
+                wg_manager.clients[i].update({
+                    'name': data.get('name', client['name']),
+                    'location': data.get('location', client['location']),
+                    'network_config': data.get('network_config', client.get('network_config', {}))
+                })
+                return jsonify({'success': True, 'message': 'Client erfolgreich aktualisiert'})
+        
+        return jsonify({'success': False, 'message': 'Client nicht gefunden'}), 404
+    
+    elif request.method == 'DELETE':
+        public_key = request.args.get('public_key')
+        
+        for i, client in enumerate(wg_manager.clients):
+            if client.get('public_key') == public_key:
+                removed_client = wg_manager.clients.pop(i)
+                return jsonify({'success': True, 'message': f'Client "{removed_client["name"]}" entfernt'})
+        
+        return jsonify({'success': False, 'message': 'Client nicht gefunden'}), 404
+
+@app.route('/api/network-interfaces')
+def api_network_interfaces():
+    """API: Verfügbare Netzwerkschnittstellen (Mock für lokales Testen)"""
+    mock_interfaces = {
+        'ethernet': [
+            {'name': 'eth0', 'status': 'up', 'ip': '192.168.1.100'},
+            {'name': 'eth1', 'status': 'up', 'ip': '10.0.0.1'},
+            {'name': 'enp3s0', 'status': 'up', 'ip': '192.168.2.50'}
+        ],
+        'wireless': [
+            {'name': 'wlan0', 'status': 'up', 'ip': '192.168.1.200'},
+            {'name': 'wlp2s0', 'status': 'down', 'ip': None}
+        ],
+        'virtual': [
+            {'name': 'docker0', 'status': 'up', 'ip': '172.17.0.1'},
+            {'name': 'br0', 'status': 'up', 'ip': '192.168.100.1'}
+        ],
+        'other': [
+            {'name': 'usb0', 'status': 'down', 'ip': None}
+        ]
+    }
+    
+    current_interfaces = {
+        'wan': 'eth0',
+        'lan': 'eth1'
+    }
+    
+    return jsonify({
+        'success': True,
+        'interfaces': mock_interfaces,
+        'current': current_interfaces
+    })
+
+@app.route('/api/devices')
+def api_devices():
+    """API: Erkannte Netzwerkgeräte (Mock für Server-Netzwerk)"""
+    mock_devices = [
+        {
+            'ip': '10.0.0.100',
+            'mac': '00:11:22:33:44:55',
+            'hostname': 'webserver',
+            'name': 'Web Server',
+            'status': 'connected',
+            'method': 'arp'
+        },
+        {
+            'ip': '10.0.0.101',
+            'mac': '00:11:22:33:44:66', 
+            'hostname': 'database',
+            'name': 'Database Server',
+            'status': 'connected',
+            'method': 'arp'
+        },
+        {
+            'ip': '10.0.0.102',
+            'mac': '00:11:22:33:44:77',
+            'hostname': 'minecraft',
+            'name': 'Minecraft Server',
+            'status': 'connected',
+            'method': 'nmap'
+        },
+        {
+            'ip': '10.0.0.103',
+            'mac': '00:11:22:33:44:88',
+            'hostname': None,
+            'name': 'Unbekanntes Gerät',
+            'status': 'disconnected',
+            'method': 'arp'
+        }
+    ]
+    
+    return jsonify({
+        'success': True,
+        'devices': mock_devices
+    })
+
+@app.route('/api/admin/update', methods=['POST'])
+def api_admin_update():
+    """API: System-Update (Mock)"""
+    return jsonify({
+        'success': True, 
+        'message': 'System-Update gestartet (Mock)',
+        'details': 'In echter Umgebung würde hier siteconnector-update ausgeführt'
+    })
+
 if __name__ == '__main__':
     print("🚀 Lokale Entwicklungsumgebung")
     print("==============================")
-    print("Dashboard: http://localhost:5000")
-    print("API: http://localhost:5000/api/status")
+    print("Dashboard: http://localhost:5002")
+    print("API: http://localhost:5002/api/status")
+    print("Login: http://localhost:5002/login")
     print("")
     print("💡 Alle WireGuard-Funktionen werden simuliert")
     print("📝 Änderungen werden live übernommen")
     print("")
     
-    # Entwicklungsserver starten
-    app.run(host='localhost', port=5000, debug=True)
+    # Entwicklungsserver starten (Port 5002 falls 5001 belegt)
+    app.run(host='127.0.0.1', port=5002, debug=True)

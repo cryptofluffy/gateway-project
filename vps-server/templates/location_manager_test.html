@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Location VPN Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .header {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #00ff88;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .stats-overview {
+            display: flex;
+            gap: 30px;
+            color: #aaa;
+            font-size: 14px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .locations-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-height: calc(100vh - 120px);
+            overflow-y: auto;
+        }
+
+        .location-card {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid;
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .location-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 255, 136, 0.2);
+        }
+
+        .location-card.online {
+            border-color: #00ff88;
+        }
+
+        .location-card.offline {
+            border-color: #ff4757;
+        }
+
+        .location-card.connecting {
+            border-color: #ffa502;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+
+        .location-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .location-title {
+            font-size: 18px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: blink 2s infinite;
+        }
+
+        .status-indicator.online { background: #00ff88; }
+        .status-indicator.offline { background: #ff4757; }
+        .status-indicator.connecting { background: #ffa502; }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .location-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .info-label {
+            color: #aaa;
+        }
+
+        .info-value {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .devices-section {
+            margin-top: 15px;
+        }
+
+        .devices-title {
+            color: #00ff88;
+            font-size: 16px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .device-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .device-tag {
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid #00ff88;
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 12px;
+            color: #00ff88;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .device-tag.offline {
+            background: rgba(255, 71, 87, 0.2);
+            border-color: #ff4757;
+            color: #ff4757;
+        }
+
+        .location-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .control-btn {
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid #00ff88;
+            color: #00ff88;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 12px;
+            flex: 1;
+        }
+
+        .control-btn:hover {
+            background: rgba(0, 255, 136, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .control-btn.disconnect {
+            border-color: #ff4757;
+            color: #ff4757;
+            background: rgba(255, 71, 87, 0.2);
+        }
+
+        .control-btn.connect {
+            border-color: #ffa502;
+            color: #ffa502;
+            background: rgba(255, 165, 2, 0.2);
+        }
+
+        .add-location {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #00ff88, #00d4aa);
+            border: none;
+            border-radius: 50%;
+            color: #000;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(0, 255, 136, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .add-location:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 40px rgba(0, 255, 136, 0.5);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #00ff88;
+            border-radius: 15px;
+            padding: 30px;
+            min-width: 400px;
+            max-width: 500px;
+        }
+
+        .modal h2 {
+            color: #00ff88;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #aaa;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            padding: 10px;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #00ff88;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .modal-btn.save {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: #00ff88;
+            color: #00ff88;
+        }
+
+        .modal-btn.cancel {
+            background: rgba(255, 71, 87, 0.2);
+            border-color: #ff4757;
+            color: #ff4757;
+        }
+
+        .bandwidth-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .bandwidth-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #00d4aa);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200px 0; }
+            100% { background-position: 200px 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌍 Multi-Location VPN Manager</h1>
+        <div class="stats-overview">
+            <div class="stat-item">
+                <div class="stat-value" id="total-locations">4</div>
+                <div>Locations</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="online-connections">2</div>
+                <div>Connections</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="total-devices">18</div>
+                <div>Devices</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="total-traffic">65.0 MB/s</div>
+                <div>Traffic</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="locations-grid" id="locations-grid">
+        <!-- Hauptstandort -->
+        <div class="location-card online">
+            <div class="location-header">
+                <div class="location-title">
+                    🏢 Hauptstandort
+                    <div class="status-indicator online"></div>
+                </div>
+                <span style="color: #00ff88; font-weight: bold;">ONLINE</span>
+            </div>
+            
+            <div class="location-info">
+                <div class="info-item">
+                    <span class="info-label">VPN IP:</span>
+                    <span class="info-value">10.8.0.1</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Gateway:</span>
+                    <span class="info-value">192.168.1.1</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Clients:</span>
+                    <span class="info-value">12</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Bandwidth:</span>
+                    <span class="info-value">100 Mbps</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Latency:</span>
+                    <span class="info-value">8ms</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Devices:</span>
+                    <span class="info-value">4</span>
+                </div>
+            </div>
+
+            <div class="bandwidth-bar">
+                <div class="bandwidth-fill" style="width: 75%;"></div>
+            </div>
+
+            <div class="devices-section">
+                <div class="devices-title">
+                    📱 Devices:
+                </div>
+                <div class="device-list">
+                    <div class="device-tag">💻 Web Server</div>
+                    <div class="device-tag">🖥️ Database</div>
+                    <div class="device-tag">📱 Router Hub</div>
+                    <div class="device-tag">🖨️ Drucker AP</div>
+                </div>
+            </div>
+
+            <div class="location-controls">
+                <button class="control-btn">Configure</button>
+                <button class="control-btn">Manage</button>
+                <button class="control-btn disconnect">Disconnect</button>
+            </div>
+        </div>
+
+        <!-- Home Office -->
+        <div class="location-card online">
+            <div class="location-header">
+                <div class="location-title">
+                    🏠 Home Office
+                    <div class="status-indicator online"></div>
+                </div>
+                <span style="color: #00ff88; font-weight: bold;">ONLINE</span>
+            </div>
+            
+            <div class="location-info">
+                <div class="info-item">
+                    <span class="info-label">VPN IP:</span>
+                    <span class="info-value">10.8.0.1</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Gateway:</span>
+                    <span class="info-value">192.168.0.1</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Clients:</span>
+                    <span class="info-value">8</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Bandwidth:</span>
+                    <span class="info-value">50 Mbps</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Latency:</span>
+                    <span class="info-value">12ms</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Devices:</span>
+                    <span class="info-value">5</span>
+                </div>
+            </div>
+
+            <div class="bandwidth-bar">
+                <div class="bandwidth-fill" style="width: 60%;"></div>
+            </div>
+
+            <div class="devices-section">
+                <div class="devices-title">
+                    📱 Devices:
+                </div>
+                <div class="device-list">
+                    <div class="device-tag">💻 Work Station</div>
+                    <div class="device-tag">📱 Mobile Server</div>
+                    <div class="device-tag">🖥️ IoT Gateway</div>
+                    <div class="device-tag">📱 Mobile Hotspot</div>
+                    <div class="device-tag offline">💻 Laptop 2</div>
+                </div>
+            </div>
+
+            <div class="location-controls">
+                <button class="control-btn">Configure</button>
+                <button class="control-btn">Manage</button>
+                <button class="control-btn disconnect">Disconnect</button>
+            </div>
+        </div>
+
+        <!-- Außenstelle -->
+        <div class="location-card connecting">
+            <div class="location-header">
+                <div class="location-title">
+                    🏢 Außenstelle
+                    <div class="status-indicator connecting"></div>
+                </div>
+                <span style="color: #ffa502; font-weight: bold;">CONNECTING</span>
+            </div>
+            
+            <div class="location-info">
+                <div class="info-item">
+                    <span class="info-label">VPN IP:</span>
+                    <span class="info-value">10.8.0.1</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Gateway:</span>
+                    <span class="info-value">192.168.10.1</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Clients:</span>
+                    <span class="info-value">5</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Bandwidth:</span>
+                    <span class="info-value">25 Mbps</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Latency:</span>
+                    <span class="info-value">45ms</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Devices:</span>
+                    <span class="info-value">3</span>
+                </div>
+            </div>
+
+            <div class="bandwidth-bar">
+                <div class="bandwidth-fill" style="width: 30%;"></div>
+            </div>
+
+            <div class="devices-section">
+                <div class="devices-title">
+                    📱 Devices:
+                </div>
+                <div class="device-list">
+                    <div class="device-tag offline">💻 Terminal Server</div>
+                    <div class="device-tag offline">📱 Kassensystem</div>
+                    <div class="device-tag offline">🖥️ Backup-Station</div>
+                </div>
+            </div>
+
+            <div class="location-controls">
+                <button class="control-btn connect">Retry</button>
+                <button class="control-btn">Configure</button>
+                <button class="control-btn disconnect">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Mobile Team -->
+        <div class="location-card offline">
+            <div class="location-header">
+                <div class="location-title">
+                    📱 Mobile Team
+                    <div class="status-indicator offline"></div>
+                </div>
+                <span style="color: #ff4757; font-weight: bold;">OFFLINE</span>
+            </div>
+            
+            <div class="location-info">
+                <div class="info-item">
+                    <span class="info-label">VPN IP:</span>
+                    <span class="info-value">10.8.0.1</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Gateway:</span>
+                    <span class="info-value">DHCP</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Clients:</span>
+                    <span class="info-value">3</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Bandwidth:</span>
+                    <span class="info-value">20 Mbps</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Latency:</span>
+                    <span class="info-value">---</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Devices:</span>
+                    <span class="info-value">6</span>
+                </div>
+            </div>
+
+            <div class="bandwidth-bar">
+                <div class="bandwidth-fill" style="width: 0%;"></div>
+            </div>
+
+            <div class="devices-section">
+                <div class="devices-title">
+                    📱 Devices:
+                </div>
+                <div class="device-list">
+                    <div class="device-tag offline">💻 Laptop 1</div>
+                    <div class="device-tag offline">💻 Laptop 2</div>
+                    <div class="device-tag offline">📱 Mobile Hotspot</div>
+                </div>
+            </div>
+
+            <div class="location-controls">
+                <button class="control-btn connect">Connect</button>
+                <button class="control-btn">Configure</button>
+                <button class="control-btn">Manage</button>
+            </div>
+        </div>
+    </div>
+
+    <button class="add-location" onclick="openModal()">+</button>
+
+    <!-- Modal for adding new location -->
+    <div class="modal" id="add-location-modal">
+        <div class="modal-content">
+            <h2>🌍 Add New Location</h2>
+            <form id="add-location-form">
+                <div class="form-group">
+                    <label for="location-name">Location Name:</label>
+                    <input type="text" id="location-name" placeholder="e.g., Branch Office Berlin" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="location-type">Location Type:</label>
+                    <select id="location-type" required>
+                        <option value="">Select type...</option>
+                        <option value="office">🏢 Office</option>
+                        <option value="home">🏠 Home Office</option>
+                        <option value="mobile">📱 Mobile</option>
+                        <option value="datacenter">🏭 Data Center</option>
+                        <option value="branch">🏪 Branch</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="gateway-ip">Gateway IP:</label>
+                    <input type="text" id="gateway-ip" placeholder="192.168.x.1" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="vpn-ip">VPN IP Range:</label>
+                    <input type="text" id="vpn-ip" placeholder="10.8.x.0/24" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="bandwidth">Bandwidth (Mbps):</label>
+                    <input type="number" id="bandwidth" placeholder="100" min="1" required>
+                </div>
+                
+                <div class="modal-buttons">
+                    <button type="button" class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="modal-btn save">Add Location</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openModal() {
+            document.getElementById('add-location-modal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('add-location-modal').style.display = 'none';
+            document.getElementById('add-location-form').reset();
+        }
+
+        document.getElementById('add-location-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('location-name').value;
+            const type = document.getElementById('location-type').value;
+            const gatewayIp = document.getElementById('gateway-ip').value;
+            const vpnIp = document.getElementById('vpn-ip').value;
+            const bandwidth = document.getElementById('bandwidth').value;
+            
+            const typeIcons = {
+                office: '🏢',
+                home: '🏠',
+                mobile: '📱',
+                datacenter: '🏭',
+                branch: '🏪'
+            };
+            
+            const newCard = document.createElement('div');
+            newCard.className = 'location-card offline';
+            newCard.innerHTML = `
+                <div class="location-header">
+                    <div class="location-title">
+                        ${typeIcons[type]} ${name}
+                        <div class="status-indicator offline"></div>
+                    </div>
+                    <span style="color: #ff4757; font-weight: bold;">OFFLINE</span>
+                </div>
+                
+                <div class="location-info">
+                    <div class="info-item">
+                        <span class="info-label">VPN IP:</span>
+                        <span class="info-value">${vpnIp}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Gateway:</span>
+                        <span class="info-value">${gatewayIp}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Clients:</span>
+                        <span class="info-value">0</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Bandwidth:</span>
+                        <span class="info-value">${bandwidth} Mbps</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Latency:</span>
+                        <span class="info-value">---</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Devices:</span>
+                        <span class="info-value">0</span>
+                    </div>
+                </div>
+
+                <div class="bandwidth-bar">
+                    <div class="bandwidth-fill" style="width: 0%;"></div>
+                </div>
+
+                <div class="devices-section">
+                    <div class="devices-title">
+                        📱 Devices:
+                    </div>
+                    <div class="device-list">
+                        <div class="device-tag offline">No devices</div>
+                    </div>
+                </div>
+
+                <div class="location-controls">
+                    <button class="control-btn connect">Connect</button>
+                    <button class="control-btn">Configure</button>
+                    <button class="control-btn">Manage</button>
+                </div>
+            `;
+            
+            document.getElementById('locations-grid').appendChild(newCard);
+            closeModal();
+            updateStats();
+        });
+
+        function updateStats() {
+            const locations = document.querySelectorAll('.location-card').length;
+            const online = document.querySelectorAll('.location-card.online').length;
+            
+            document.getElementById('total-locations').textContent = locations;
+            document.getElementById('online-connections').textContent = online;
+            
+            // Simulate device count
+            let totalDevices = 0;
+            document.querySelectorAll('.device-tag:not(.offline)').forEach(() => totalDevices++);
+            document.getElementById('total-devices').textContent = totalDevices;
+            
+            // Random traffic
+            const traffic = (Math.random() * 30 + 40).toFixed(1);
+            document.getElementById('total-traffic').textContent = traffic + ' MB/s';
+        }
+
+        // Auto-update stats and connection states
+        setInterval(() => {
+            updateStats();
+            
+            // Randomly change some connection states for demo
+            const cards = document.querySelectorAll('.location-card');
+            cards.forEach(card => {
+                if (Math.random() < 0.1) { // 10% chance
+                    const states = ['online', 'offline', 'connecting'];
+                    const currentState = card.classList.contains('online') ? 'online' : 
+                                       card.classList.contains('offline') ? 'offline' : 'connecting';
+                    
+                    // Remove current state
+                    card.classList.remove('online', 'offline', 'connecting');
+                    
+                    // Add random new state (different from current)
+                    const availableStates = states.filter(s => s !== currentState);
+                    const newState = availableStates[Math.floor(Math.random() * availableStates.length)];
+                    card.classList.add(newState);
+                    
+                    // Update status text and indicator
+                    const statusText = card.querySelector('.location-header span');
+                    const indicator = card.querySelector('.status-indicator');
+                    
+                    indicator.className = `status-indicator ${newState}`;
+                    
+                    switch(newState) {
+                        case 'online':
+                            statusText.textContent = 'ONLINE';
+                            statusText.style.color = '#00ff88';
+                            break;
+                        case 'offline':
+                            statusText.textContent = 'OFFLINE';
+                            statusText.style.color = '#ff4757';
+                            break;
+                        case 'connecting':
+                            statusText.textContent = 'CONNECTING';
+                            statusText.style.color = '#ffa502';
+                            break;
+                    }
+                }
+            });
+        }, 8000);
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('add-location-modal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+
+        // Add hover effects to control buttons
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('control-btn')) {
+                e.target.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    e.target.style.transform = '';
+                }, 150);
+            }
+        });
+    </script>
+</body>
+</html>

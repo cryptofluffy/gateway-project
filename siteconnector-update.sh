@@ -485,6 +485,9 @@ EOF
     fi
     
     echo "✅ SiteConnector Gateway Update abgeschlossen"
+    
+    # Gateway-spezifische Netzwerk-Fixes
+    apply_network_fixes
     echo "=============================================="
     echo "🖥️ Gateway-PC Konfiguration:"
     echo "   WAN-Interface: Heimnetz-Client (DHCP von FritzBox/Router)"
@@ -526,8 +529,119 @@ Update erfolgreich abgeschlossen!
 Nächstes Update: sudo siteconnector-update
 EOF
 
+# Netzwerk-Fixes für Gateway anwenden
+if [ "$SYSTEM_TYPE" = "gateway" ]; then
+    apply_network_fixes
+fi
+
 echo ""
 echo "✅ SiteConnector Update erfolgreich abgeschlossen!"
+
+# Netzwerk-Fixes Funktion
+apply_network_fixes() {
+    echo ""
+    echo "🔧 Gateway-Netzwerk-Optimierungen"
+    echo "================================="
+    
+    # 1. DHCP-Server Status prüfen
+    echo "📡 Prüfe DHCP-Server Status..."
+    if ! systemctl is-active --quiet isc-dhcp-server; then
+        echo "🔧 Repariere DHCP-Server..."
+        
+        # Interface-korrekte Konfiguration
+        if [ -f "/usr/local/bin/gateway_manager.py" ]; then
+            echo "🔍 Nutze Gateway Manager für Interface-Erkennung..."
+            
+            python3 - << 'EOF'
+import sys, subprocess, os
+sys.path.append('/usr/local/bin')
+
+try:
+    from gateway_manager import GatewayManager
+    gm = GatewayManager()
+    interfaces = gm.get_actual_interfaces()
+    wan_iface = interfaces.get('wan_interface', 'eth0')
+    lan_iface = interfaces.get('lan_interface', 'eth1')
+    
+    print(f"Erkannte Interfaces: WAN={wan_iface}, LAN={lan_iface}")
+    
+    # DHCP-Konfiguration erstellen
+    dhcp_config = f"""# DHCP für Gateway LAN ({lan_iface})
+default-lease-time 86400;
+max-lease-time 172800;
+authoritative;
+
+option domain-name-servers 192.168.100.1, 8.8.8.8;
+option domain-name "gateway.local";
+
+subnet 192.168.100.0 netmask 255.255.255.0 {{
+    range 192.168.100.50 192.168.100.200;
+    option routers 192.168.100.1;
+    option broadcast-address 192.168.100.255;
+}}
+"""
+    
+    # Dateien schreiben
+    with open('/etc/dhcp/dhcpd.conf', 'w') as f:
+        f.write(dhcp_config)
+    
+    with open('/etc/default/isc-dhcp-server', 'w') as f:
+        f.write(f'INTERFACESv4="{lan_iface}"\n')
+    
+    # LAN-Interface konfigurieren
+    subprocess.run(['ip', 'addr', 'flush', 'dev', lan_iface], capture_output=True)
+    subprocess.run(['ip', 'addr', 'add', '192.168.100.1/24', 'dev', lan_iface], capture_output=True)
+    subprocess.run(['ip', 'link', 'set', lan_iface, 'up'], capture_output=True)
+    
+    print("✅ DHCP-Konfiguration aktualisiert")
+    
+except Exception as e:
+    print(f"⚠️ Fehler: {e} - verwende Standard-Konfiguration")
+    
+    # Fallback-Konfiguration
+    with open('/etc/dhcp/dhcpd.conf', 'w') as f:
+        f.write("""subnet 192.168.100.0 netmask 255.255.255.0 {
+    range 192.168.100.50 192.168.100.200;
+    option routers 192.168.100.1;
+}""")
+EOF
+        fi
+        
+        # DHCP-Server starten
+        systemctl restart isc-dhcp-server 2>/dev/null || echo "⚠️ DHCP-Server Neustart fehlgeschlagen"
+        systemctl enable isc-dhcp-server 2>/dev/null || true
+        
+        if systemctl is-active --quiet isc-dhcp-server; then
+            echo "✅ DHCP-Server läuft jetzt"
+        else
+            echo "❌ DHCP-Server Problem - prüfe Konfiguration"
+        fi
+    else
+        echo "✅ DHCP-Server läuft bereits"
+    fi
+    
+    # 2. IP-Forwarding aktivieren
+    if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf 2>/dev/null; then
+        echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+        sysctl -p >/dev/null 2>&1
+        echo "✅ IP-Forwarding aktiviert"
+    fi
+    
+    # 3. Network Scanner Test
+    if [ -f "/usr/local/bin/network-scanner.py" ]; then
+        echo "🔍 Teste Network Scanner..."
+        timeout 10 python3 /usr/local/bin/network-scanner.py >/dev/null 2>&1 || true
+        echo "✅ Network Scanner getestet"
+    fi
+    
+    echo "✅ Netzwerk-Optimierungen abgeschlossen"
+    echo ""
+    echo "🎯 Wichtige Hinweise:"
+    echo "   - Verbinde Server/NAS mit LAN-Port des Gateways"
+    echo "   - Geräte erhalten IPs im Bereich 192.168.100.50-200"
+    echo "   - Gateway-IP: 192.168.100.1"
+    echo "   - Nach ~2 Minuten sollten Geräte sichtbar sein"
+}
 echo ""
 echo "📋 Befehle:"
 echo "============"
