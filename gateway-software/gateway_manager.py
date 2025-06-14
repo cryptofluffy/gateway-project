@@ -87,9 +87,18 @@ class WireGuardGateway:
                     # VPS API-Endpunkt für automatische Key-Updates
                     # Normalisiere URL für konsistente Verwendung
                     self.vps_api_url = self.normalize_url(config.get('vps_api_url'))
+                    
+                    # Lade Netzwerk-Interface-Konfiguration
+                    self.network_config = config.get('network_config', {})
+                    self.wan_interface = self.network_config.get('wan_interface', 'auto')
+                    self.lan_interface = self.network_config.get('lan_interface', 'auto')
         except Exception as e:
             # Konfigurationsfehler sind nicht kritisch beim Start
             print(f"Fehler beim Laden der Konfiguration: {e}")
+            # Fallback-Werte setzen
+            self.network_config = {}
+            self.wan_interface = 'auto'
+            self.lan_interface = 'auto'
     
     def fetch_vps_public_key(self, vps_api_url):
         """Hole aktuellen VPS Public Key vom VPS Dashboard API"""
@@ -134,6 +143,59 @@ class WireGuardGateway:
             print(f"❌ Fehler beim Abrufen des VPS Public Key: {e}")
         
         return None
+    
+    def detect_interfaces(self):
+        """Automatische Interface-Erkennung"""
+        try:
+            # Alle verfügbaren Netzwerk-Interfaces ermitteln
+            result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True)
+            interfaces = []
+            
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if ': ' in line and not line.startswith(' '):
+                        # Extrahiere Interface-Name
+                        interface_name = line.split(':')[1].strip().split('@')[0]
+                        # Überspringe Loopback und virtuelle Interfaces
+                        if interface_name not in ['lo'] and not interface_name.startswith('wg'):
+                            interfaces.append(interface_name)
+            
+            # Sortiere Interfaces: Ethernet vor WLAN
+            eth_interfaces = [iface for iface in interfaces if iface.startswith(('eth', 'en'))]
+            wlan_interfaces = [iface for iface in interfaces if iface.startswith(('wlan', 'wl'))]
+            other_interfaces = [iface for iface in interfaces if not iface.startswith(('eth', 'en', 'wlan', 'wl'))]
+            
+            sorted_interfaces = eth_interfaces + wlan_interfaces + other_interfaces
+            
+            print(f"🔍 Erkannte Interfaces: {sorted_interfaces}")
+            return sorted_interfaces
+            
+        except Exception as e:
+            print(f"Fehler bei Interface-Erkennung: {e}")
+            return ['eth0', 'eth1']  # Fallback
+    
+    def get_actual_interfaces(self):
+        """Ermittle die tatsächlich zu verwendenden Interfaces"""
+        detected = self.detect_interfaces()
+        
+        # WAN Interface bestimmen
+        if self.wan_interface == 'auto':
+            # Erstes Interface ist normalerweise WAN (Internet-Verbindung)
+            wan_iface = detected[0] if detected else 'eth0'
+        else:
+            wan_iface = self.wan_interface
+        
+        # LAN Interface bestimmen 
+        if self.lan_interface == 'auto':
+            # Zweites Interface ist normalerweise LAN (Server-Netzwerk)
+            lan_iface = detected[1] if len(detected) > 1 else 'eth1'
+        else:
+            lan_iface = self.lan_interface
+        
+        print(f"📡 WAN Interface (Internet): {wan_iface}")
+        print(f"🖧 LAN Interface (Server): {lan_iface}")
+        
+        return wan_iface, lan_iface
     
     def update_vps_public_key(self):
         """Aktualisiere VPS Public Key automatisch"""
@@ -203,7 +265,7 @@ class WireGuardGateway:
             print(f"Fehler beim Generieren der Keys: {e}")
             return False
     
-    def setup_initial_config(self, vps_ip, vps_public_key):
+    def setup_initial_config(self, vps_ip, vps_public_key, network_config=None):
         """Initiale Konfiguration des Gateways mit manuellen Parametern"""
         # VPS-Parameter setzen
         self.vps_public_key = vps_public_key
@@ -212,9 +274,25 @@ class WireGuardGateway:
         # Optional: API URL für Dashboard-Integration
         self.vps_api_url = f"http://{vps_ip}:8080"
         
+        # Netzwerk-Konfiguration setzen (Standard: automatisch)
+        if network_config:
+            self.network_config = network_config
+            self.wan_interface = network_config.get('wan_interface', 'auto')
+            self.lan_interface = network_config.get('lan_interface', 'auto')
+        else:
+            # Standardkonfiguration: automatische Interface-Erkennung
+            self.network_config = {
+                'wan_interface': 'auto',
+                'lan_interface': 'auto',
+                'auto_detect': True
+            }
+            self.wan_interface = 'auto'
+            self.lan_interface = 'auto'
+        
         print(f"✅ VPS Public Key gesetzt: {self.vps_public_key[:20]}...")
         print(f"✅ VPS Endpoint: {self.vps_endpoint}")
         print(f"✅ VPS Dashboard URL: {self.vps_api_url}")
+        print(f"✅ Netzwerk-Konfiguration: WAN={self.wan_interface}, LAN={self.lan_interface}")
         
         if not self.generate_keys():
             return False
@@ -225,7 +303,8 @@ class WireGuardGateway:
             'vps_endpoint': self.vps_endpoint,
             'vps_public_key': self.vps_public_key,
             'gateway_private_key': self.gateway_private_key,
-            'gateway_public_key': self.gateway_public_key
+            'gateway_public_key': self.gateway_public_key,
+            'network_config': self.network_config
         }
         
         os.makedirs('/etc/wireguard-gateway', exist_ok=True)
@@ -247,27 +326,30 @@ class WireGuardGateway:
         return True
     
     def create_wireguard_config(self):
-        """Erstelle WireGuard-Konfigurationsdatei"""
+        """Erstelle WireGuard-Konfigurationsdatei mit dynamischen Interfaces"""
+        # Ermittle die tatsächlich zu verwendenden Interfaces
+        wan_iface, lan_iface = self.get_actual_interfaces()
+        
         config_content = f"""[Interface]
 PrivateKey = {self.gateway_private_key}
 Address = 10.8.0.2/24
 Table = off
 
-# Nur Server-Netzwerk (Port B) über VPN routen - Port A bleibt lokal
+# Nur Server-Netzwerk ({lan_iface}) über VPN routen - {wan_iface} bleibt lokal
 PostUp = ip rule add from 10.0.0.0/24 table 200 priority 100
 PostUp = ip route add default dev %i table 200
-PostUp = ip route add 10.0.0.0/24 dev eth1 table 200
+PostUp = ip route add 10.0.0.0/24 dev {lan_iface} table 200
 PostUp = iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o %i -j MASQUERADE
-PostUp = iptables -A FORWARD -i eth1 -o %i -j ACCEPT
-PostUp = iptables -A FORWARD -i %i -o eth1 -j ACCEPT
+PostUp = iptables -A FORWARD -i {lan_iface} -o %i -j ACCEPT
+PostUp = iptables -A FORWARD -i %i -o {lan_iface} -j ACCEPT
 PostUp = iptables -A FORWARD -s 10.0.0.0/24 -j ACCEPT
 
 PostDown = ip rule del from 10.0.0.0/24 table 200 2>/dev/null || true
 PostDown = ip route del default dev %i table 200 2>/dev/null || true
-PostDown = ip route del 10.0.0.0/24 dev eth1 table 200 2>/dev/null || true
+PostDown = ip route del 10.0.0.0/24 dev {lan_iface} table 200 2>/dev/null || true
 PostDown = iptables -t nat -D POSTROUTING -s 10.0.0.0/24 -o %i -j MASQUERADE 2>/dev/null || true
-PostDown = iptables -D FORWARD -i eth1 -o %i -j ACCEPT 2>/dev/null || true
-PostDown = iptables -D FORWARD -i %i -o eth1 -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -i {lan_iface} -o %i -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -i %i -o {lan_iface} -j ACCEPT 2>/dev/null || true
 PostDown = iptables -D FORWARD -s 10.0.0.0/24 -j ACCEPT 2>/dev/null || true
 
 [Peer]
@@ -332,14 +414,17 @@ PersistentKeepalive = 25
             return False
     
     def setup_network_interfaces(self):
-        """Konfiguriere Netzwerk-Interfaces für Gateway-Funktion"""
+        """Konfiguriere Netzwerk-Interfaces für Gateway-Funktion mit dynamischen Interfaces"""
         print("🌐 Netzwerk-Interfaces werden konfiguriert...")
         
+        # Ermittle die tatsächlich zu verwendenden Interfaces
+        wan_iface, lan_iface = self.get_actual_interfaces()
+        
         # Interface-Konfigurationen
-        # Port A: Heimnetz-Client (DHCP von FritzBox)
-        # Port B: Server-Gateway (eigener DHCP für abgeschirmtes Netz)
+        # WAN Interface: Heimnetz-Client (DHCP von FritzBox)
+        # LAN Interface: Server-Gateway (eigener DHCP für abgeschirmtes Netz)
         interfaces = [
-            {'dev': 'eth1', 'ip': '10.0.0.1/24', 'desc': 'Server-Netzwerk (Port B - Gateway-Funktion)'}
+            {'dev': lan_iface, 'ip': '10.0.0.1/24', 'desc': f'Server-Netzwerk ({lan_iface} - Gateway-Funktion)'}
         ]
         
         for iface in interfaces:
@@ -363,6 +448,8 @@ PersistentKeepalive = 25
                 subprocess.run(['ip', 'link', 'set', iface['dev'], 'up'], 
                               capture_output=True, text=True)
                 
+                print(f"✅ Interface {iface['dev']} als Server-Gateway (10.0.0.1/24) konfiguriert")
+                
             except Exception as e:
                 print(f"Fehler bei Netzwerk-Setup: {iface['desc']} - {e}")
                 print("⚠️ Netzwerk-Konfiguration teilweise fehlgeschlagen (normal bei erstem Setup)")
@@ -371,6 +458,7 @@ PersistentKeepalive = 25
         try:
             subprocess.run(['sysctl', '-w', 'net.ipv4.ip_forward=1'], 
                           capture_output=True, text=True)
+            print("✅ IP-Forwarding aktiviert")
         except Exception as e:
             print(f"IP-Forwarding Fehler: {e}")
                 
@@ -603,24 +691,44 @@ PersistentKeepalive = 25
             pass
         return None
     
+    def get_lan_interface_for_dhcp(self):
+        """Ermittle das LAN-Interface für DHCP-Konfiguration"""
+        _, lan_iface = self.get_actual_interfaces()
+        return lan_iface
+    
     def setup_dhcp_server(self):
-        """DHCP-Server nur für Server-Netzwerk (Port B/eth1)"""
-        dhcp_config = """
-# DHCP nur für Server-Netzwerk (Port B) - Internet über VPN
-# Port A (Heimnetz) hat bereits eine FritzBox als DHCP-Server
-subnet 10.0.0.0 netmask 255.255.255.0 {
+        """DHCP-Server nur für Server-Netzwerk mit dynamischem Interface"""
+        # Ermittle das korrekte LAN-Interface
+        lan_iface = self.get_lan_interface_for_dhcp()
+        
+        dhcp_config = f"""
+# DHCP nur für Server-Netzwerk ({lan_iface}) - Internet über VPN
+# WAN-Interface hat bereits DHCP von FritzBox/Router
+subnet 10.0.0.0 netmask 255.255.255.0 {{
     range 10.0.0.100 10.0.0.200;
     option routers 10.0.0.1;
     option domain-name-servers 8.8.8.8, 8.8.4.4;
     option domain-name "server.local";
     default-lease-time 3600;
     max-lease-time 7200;
-}
+}}
+"""
+        
+        dhcp_default_config = f"""# Interface für DHCP-Server (Server-Netzwerk)
+INTERFACESv4="{lan_iface}"
+INTERFACESv6=""
 """
         
         try:
+            # DHCP-Konfiguration schreiben
             with open('/etc/dhcp/dhcpd.conf', 'w') as f:
                 f.write(dhcp_config)
+            
+            # Interface-Konfiguration schreiben
+            with open('/etc/default/isc-dhcp-server', 'w') as f:
+                f.write(dhcp_default_config)
+            
+            print(f"✅ DHCP-Server konfiguriert für Interface: {lan_iface}")
             
             # DHCP-Server starten
             subprocess.run(['systemctl', 'enable', 'isc-dhcp-server'], check=True)

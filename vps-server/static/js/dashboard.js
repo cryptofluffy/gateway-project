@@ -72,10 +72,21 @@ class DashboardManager {
         const getLocation = () => formData.get('gateway_location')?.trim() || document.getElementById('gateway_location')?.value?.trim() || '';
         const getPublicKey = () => formData.get('gateway_public_key')?.trim() || document.getElementById('gateway_public_key')?.value?.trim() || '';
         
+        // Netzwerkschnittstellen-Konfiguration sammeln
+        const wanInterface = formData.get('wan_interface') || 'auto';
+        const lanInterface = formData.get('lan_interface') || 'auto';
+        const customWan = formData.get('custom_wan')?.trim();
+        const customLan = formData.get('custom_lan')?.trim();
+        
         const data = {
             name: getName(),
             location: getLocation(),
-            public_key: getPublicKey()
+            public_key: getPublicKey(),
+            network_config: {
+                wan_interface: wanInterface === 'custom' ? customWan : wanInterface,
+                lan_interface: lanInterface === 'custom' ? customLan : lanInterface,
+                auto_detect: wanInterface === 'auto' || lanInterface === 'auto'
+            }
         };
 
         // Debug-Ausgabe

@@ -377,27 +377,73 @@ EOF
         echo "❌ Network Scanner Timer nicht installiert - kann nicht gestartet werden"
     fi
     
-    # DHCP-Server für Server-Netzwerk (Port B) einrichten
+    # DHCP-Server für Server-Netzwerk einrichten
     echo "🌐 DHCP-Server für Server-Netzwerk konfigurieren..."
     
     # DHCP-Server installieren
     apt install -y isc-dhcp-server
     
+    # Gateway Manager verwenden um korrektes Interface zu ermitteln
+    if [ -f "/usr/local/bin/gateway_manager.py" ]; then
+        echo "🔍 Ermittle korrektes LAN-Interface über Gateway Manager..."
+        
+        # Temporäres Python-Script um Interface zu ermitteln
+        cat > /tmp/detect_lan_interface.py << 'EOF'
+#!/usr/bin/env python3
+import sys
+sys.path.append('/usr/local/bin')
+try:
+    from gateway_manager import WireGuardGateway
+    gateway = WireGuardGateway()
+    lan_iface = gateway.get_lan_interface_for_dhcp()
+    print(lan_iface)
+except Exception as e:
+    # Fallback: Auto-detect
+    import subprocess
+    try:
+        result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True)
+        interfaces = []
+        for line in result.stdout.split('\n'):
+            if ': ' in line and not line.startswith(' '):
+                iface = line.split(':')[1].strip().split('@')[0]
+                if iface not in ['lo'] and not iface.startswith('wg'):
+                    interfaces.append(iface)
+        # Zweites Interface ist normalerweise LAN
+        lan_iface = interfaces[1] if len(interfaces) > 1 else 'eth1'
+        print(lan_iface)
+    except:
+        print('eth1')  # Absolute Fallback
+EOF
+        
+        chmod +x /tmp/detect_lan_interface.py
+        LAN_INTERFACE=$(python3 /tmp/detect_lan_interface.py)
+        rm -f /tmp/detect_lan_interface.py
+    else
+        echo "⚠️ Gateway Manager nicht gefunden - verwende auto-detect..."
+        # Fallback: Interface-Auto-Detection
+        LAN_INTERFACE=$(ip link show | grep -E '^[0-9]+: (eth|en)' | head -2 | tail -1 | cut -d: -f2 | tr -d ' ')
+        if [ -z "$LAN_INTERFACE" ]; then
+            LAN_INTERFACE="eth1"  # Absolute Fallback
+        fi
+    fi
+    
+    echo "🖧 Verwende LAN-Interface für Server-Netzwerk: $LAN_INTERFACE"
+    
     # Interface für DHCP konfigurieren
-    cat > /etc/default/isc-dhcp-server << 'EOF'
-# Interface für DHCP-Server (Port B / Server-Netz)
-INTERFACESv4="eth1"
+    cat > /etc/default/isc-dhcp-server << EOF
+# Interface für DHCP-Server (Server-Netzwerk)
+INTERFACESv4="$LAN_INTERFACE"
 INTERFACESv6=""
 EOF
     
     # DHCP-Konfiguration für Server-Netzwerk
-    cat > /etc/dhcp/dhcpd.conf << 'EOF'
-# DHCP-Konfiguration für Server-Netzwerk (Port B)
+    cat > /etc/dhcp/dhcpd.conf << EOF
+# DHCP-Konfiguration für Server-Netzwerk ($LAN_INTERFACE)
 default-lease-time 3600;
 max-lease-time 7200;
 authoritative;
 
-# Server-Netzwerk (Port B / eth1) - Internet über VPN
+# Server-Netzwerk ($LAN_INTERFACE) - Internet über VPN
 subnet 10.0.0.0 netmask 255.255.255.0 {
     range 10.0.0.100 10.0.0.200;
     option routers 10.0.0.1;
@@ -408,17 +454,21 @@ subnet 10.0.0.0 netmask 255.255.255.0 {
 }
 EOF
     
-    # eth1 Interface als Gateway konfigurieren
-    ip addr add 10.0.0.1/24 dev eth1 2>/dev/null || true
-    ip link set eth1 up
-    echo "✅ eth1 als Gateway (10.0.0.1/24) konfiguriert"
+    # LAN Interface als Gateway konfigurieren
+    if ip link show "$LAN_INTERFACE" >/dev/null 2>&1; then
+        ip addr add 10.0.0.1/24 dev "$LAN_INTERFACE" 2>/dev/null || true
+        ip link set "$LAN_INTERFACE" up
+        echo "✅ $LAN_INTERFACE als Gateway (10.0.0.1/24) konfiguriert"
+    else
+        echo "⚠️ Interface $LAN_INTERFACE nicht gefunden - überspringe IP-Konfiguration"
+    fi
     
     # DHCP-Server starten
     systemctl enable isc-dhcp-server
     systemctl start isc-dhcp-server
     
     if systemctl is-active --quiet isc-dhcp-server; then
-        echo "✅ DHCP-Server läuft - Server bekommen automatisch IPs (10.0.0.100-200)"
+        echo "✅ DHCP-Server läuft auf $LAN_INTERFACE - Server bekommen automatisch IPs (10.0.0.100-200)"
     else
         echo "⚠️ DHCP-Server Probleme:"
         systemctl status isc-dhcp-server --no-pager
@@ -437,10 +487,11 @@ EOF
     echo "✅ SiteConnector Gateway Update abgeschlossen"
     echo "=============================================="
     echo "🖥️ Gateway-PC Konfiguration:"
-    echo "   Port A (eth0): Heimnetz-Client (DHCP von FritzBox)"
-    echo "   Port B (eth1): Server-Gateway (10.0.0.1/24)"
+    echo "   WAN-Interface: Heimnetz-Client (DHCP von FritzBox/Router)"
+    echo "   LAN-Interface ($LAN_INTERFACE): Server-Gateway (10.0.0.1/24)"
     echo ""
     echo "🌐 Server-Netzwerk:"
+    echo "   Interface: $LAN_INTERFACE"
     echo "   DHCP-Bereich: 10.0.0.100 - 10.0.0.200"
     echo "   Gateway: 10.0.0.1"
     echo "   DNS: 8.8.8.8, 8.8.4.4"
