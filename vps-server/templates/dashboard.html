@@ -2,121 +2,29 @@
 
 {% block title %}<span data-i18n="dashboard.title">Dashboard - WireGuard Gateway</span>{% endblock %}
 
-{% block head %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-/* Dashboard-specific styles */
-.dashboard-card {
-    background: var(--surface-bg);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: var(--space-lg);
-    transition: all var(--transition-base);
-    box-shadow: var(--shadow-sm);
-}
-
-.dashboard-card:hover {
-    border-color: var(--accent-primary);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: var(--space-lg);
-    margin-bottom: var(--space-xl);
-}
-
-.setup-panel {
-    background: var(--secondary-bg);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: var(--space-xl);
-    margin-bottom: var(--space-xl);
-    box-shadow: var(--shadow-sm);
-}
-
-.code-block {
-    background: var(--secondary-bg);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: var(--space-md);
-    font-family: 'Courier New', monospace;
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    overflow-x: auto;
-    word-break: break-all;
-}
-
-.form-input {
-    width: 100%;
-    padding: var(--space-sm) var(--space-md);
-    background: var(--surface-bg);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-family: inherit;
-    transition: all var(--transition-fast);
-}
-
-.form-input:focus {
-    outline: none;
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
-}
-
-.interface-config {
-    background: var(--secondary-bg);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: var(--space-lg);
-    margin-bottom: var(--space-lg);
-}
-
-@media (max-width: 768px) {
-    .stats-grid {
-        grid-template-columns: 1fr;
-        gap: var(--space-md);
-    }
-    
-    .dashboard-card {
-        padding: var(--space-md);
-    }
-    
-    .setup-panel {
-        padding: var(--space-lg);
-    }
-}
-</style>
-{% endblock %}
-
 {% block content %}
-
-<!-- System Statistics Cards -->
-<div class="stats-grid">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
     <!-- Tunnel Status -->
-    <div class="dashboard-card">
+    <div class="bg-white rounded-lg shadow-md p-6">
         <div class="flex items-center justify-between">
             <div>
-                <h3 class="text-lg font-semibold text-secondary" data-i18n="dashboard.tunnel_status">Tunnel Status</h3>
-                <p id="tunnel-status-text" class="text-2xl font-bold {% if status.status == 'active' %}text-accent{% else %}color: var(--accent-danger){% endif %}">
+                <h3 class="text-lg font-semibold text-gray-700" data-i18n="dashboard.tunnel_status">Tunnel Status</h3>
+                <p class="text-2xl font-bold {% if status.status == 'active' %}text-green-600{% else %}text-red-600{% endif %}">
                     <span data-i18n="{% if status.status == 'active' %}dashboard.active{% else %}dashboard.inactive{% endif %}">{% if status.status == 'active' %}Aktiv{% else %}Inaktiv{% endif %}</span>
                 </p>
             </div>
-            <div id="tunnel-status" class="{% if status.status == 'active' %}status-indicator status-online{% else %}status-indicator status-offline{% endif %}"></div>
+            <div id="tunnel-status" class="inline-block w-4 h-4 {% if status.status == 'active' %}bg-green-500{% else %}bg-red-500{% endif %} rounded-full"></div>
         </div>
     </div>
 
-    <!-- Connected Clients -->
-    <div class="dashboard-card">
+    <!-- Verbundene Clients -->
+    <div class="bg-white rounded-lg shadow-md p-6">
         <div class="flex items-center justify-between">
             <div>
-                <h3 class="text-lg font-semibold text-secondary" data-i18n="dashboard.connected_clients">Verbundene Clients</h3>
-                <p id="client-count" class="text-2xl font-bold" style="color: var(--accent-primary);">{{ clients|length }}</p>
+                <h3 class="text-lg font-semibold text-gray-700" data-i18n="dashboard.connected_clients">Verbundene Clients</h3>
+                <p id="client-count" class="text-2xl font-bold text-blue-600">{{ clients|length }}</p>
             </div>
-            <div style="color: var(--accent-primary);">
+            <div class="text-blue-500">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                 </svg>
@@ -125,13 +33,13 @@
     </div>
 
     <!-- Port-Weiterleitungen -->
-    <div class="dashboard-card">
+    <div class="bg-white rounded-lg shadow-md p-6">
         <div class="flex items-center justify-between">
             <div>
-                <h3 class="text-lg font-semibold text-secondary" data-i18n="dashboard.port_forwards">Port-Weiterleitungen</h3>
-                <p class="text-2xl font-bold" style="color: var(--accent-secondary);">{{ port_forwards|length }}</p>
+                <h3 class="text-lg font-semibold text-gray-700" data-i18n="dashboard.port_forwards">Port-Weiterleitungen</h3>
+                <p class="text-2xl font-bold text-purple-600">{{ port_forwards|length }}</p>
             </div>
-            <div style="color: var(--accent-secondary);">
+            <div class="text-purple-500">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path>
                 </svg>
@@ -140,59 +48,71 @@
     </div>
 </div>
 
+<!-- Language Toggle -->
+<div class="flex justify-end mb-4">
+    <div class="bg-white rounded-lg shadow-md p-2">
+        <button id="lang-de" class="px-3 py-1 rounded bg-blue-500 text-white text-sm" onclick="setLanguage('de')">
+            🇩🇪 DE
+        </button>
+        <button id="lang-en" class="px-3 py-1 rounded bg-gray-200 text-gray-700 text-sm ml-1" onclick="setLanguage('en')">
+            🇺🇸 EN
+        </button>
+    </div>
+</div>
+
 <!-- WireGuard Interface Details -->
-<div class="dashboard-card mb-6">
+<div class="bg-white rounded-lg shadow-md p-6 mb-6">
     <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-bold text-primary" data-i18n="dashboard.interface_details">WireGuard Interface Details</h2>
-        <button onclick="restartWireGuard()" class="btn btn-secondary" data-i18n="dashboard.restart_interface">
+        <h2 class="text-xl font-bold text-gray-800" data-i18n="dashboard.interface_details">WireGuard Interface Details</h2>
+        <button onclick="restartWireGuard()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors" data-i18n="dashboard.restart_interface">
             Interface neu starten
         </button>
     </div>
     
     {% if status.output %}
-    <pre class="code-block">{{ status.output }}</pre>
+    <pre class="bg-gray-100 rounded-lg p-4 text-sm overflow-x-auto">{{ status.output }}</pre>
     {% else %}
-    <p class="text-muted">Keine Interface-Informationen verfügbar</p>
+    <p class="text-gray-500 italic">Keine Interface-Informationen verfügbar</p>
     {% endif %}
 </div>
 
 <!-- Verbundene Clients -->
-<div class="dashboard-card mb-6">
-    <h2 class="text-xl font-bold text-primary mb-4" data-i18n="dashboard.connected_clients">Verbundene Clients</h2>
+<div class="bg-white rounded-lg shadow-md p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-800 mb-4" data-i18n="dashboard.connected_clients">Verbundene Clients</h2>
     
     {% if clients %}
     <div class="overflow-x-auto">
         <table class="w-full table-auto">
             <thead>
-                <tr style="background: var(--secondary-bg);">
-                    <th class="px-4 py-2 text-left text-sm font-medium text-secondary">Name/Standort</th>
-                    <th class="px-4 py-2 text-left text-sm font-medium text-secondary">Public Key</th>
-                    <th class="px-4 py-2 text-left text-sm font-medium text-secondary">Status</th>
-                    <th class="px-4 py-2 text-left text-sm font-medium text-secondary">Letzter Handshake</th>
-                    <th class="px-4 py-2 text-left text-sm font-medium text-secondary">Aktionen</th>
+                <tr class="bg-gray-50">
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Name/Standort</th>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Public Key</th>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Status</th>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Letzter Handshake</th>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Aktionen</th>
                 </tr>
             </thead>
             <tbody>
                 {% for client in clients %}
-                <tr class="border-t" style="border-color: var(--border-color);">
+                <tr class="border-t hover:bg-gray-50">
                     <td class="px-4 py-2">
-                        <div class="font-medium text-primary">{{ client.name or 'Unbenannt' }}</div>
-                        <div class="text-sm text-secondary">{{ client.location or 'Kein Standort' }}</div>
+                        <div class="font-medium text-gray-900">{{ client.name or 'Unbenannt' }}</div>
+                        <div class="text-sm text-gray-500">{{ client.location or 'Kein Standort' }}</div>
                     </td>
                     <td class="px-4 py-2 text-sm font-mono">{{ client.public_key }}</td>
                     <td class="px-4 py-2">
-                        <span class="status-indicator {% if client.status == 'connected' %}status-online{% else %}status-offline{% endif %}">
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {% if client.status == 'connected' %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">
                             {{ client.status }}
                         </span>
                     </td>
                     <td class="px-4 py-2 text-sm">{{ client.last_handshake }}</td>
                     <td class="px-4 py-2">
                         <button onclick="editClient('{{ client.public_key }}')" 
-                                class="btn btn-sm btn-secondary mr-1">
+                                class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs mr-1 transition-colors">
                             ✏️ Bearbeiten
                         </button>
                         <button onclick="removeClient('{{ client.public_key }}')" 
-                                class="btn btn-sm" style="background: var(--accent-danger); color: white;">
+                                class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs transition-colors">
                             🗑️ Entfernen
                         </button>
                     </td>
@@ -203,101 +123,108 @@
     </div>
     {% else %}
     <div class="text-center py-8">
-        <div class="text-muted mb-2">
+        <div class="text-gray-400 mb-2">
             <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
             </svg>
         </div>
-        <p class="text-muted">Keine Gateway-Clients verbunden</p>
-        <p class="text-sm text-muted mt-1">Füge unten einen neuen Gateway-PC hinzu</p>
+        <p class="text-gray-500 italic">Keine Gateway-Clients verbunden</p>
+        <p class="text-sm text-gray-400 mt-1">Füge unten einen neuen Gateway-PC hinzu</p>
     </div>
     {% endif %}
 </div>
 
 <!-- VPS Setup Information -->
-<div class="setup-panel">
-    <h2 class="text-xl font-bold text-primary mb-4">🔑 VPS Konfigurationsdaten</h2>
+<div class="bg-green-50 border border-green-200 rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-green-800 mb-4">🔑 VPS Konfigurationsdaten</h2>
     
-    <div class="grid grid-cols-2 gap-lg mb-lg">
-        <div class="dashboard-card">
-            <h3 class="font-medium text-secondary mb-2">VPS Public Key:</h3>
-            <div class="code-block">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div class="bg-white rounded-lg p-4 border">
+            <h3 class="font-medium text-gray-700 mb-2">VPS Public Key:</h3>
+            <div class="bg-gray-100 rounded p-2 font-mono text-sm break-all">
                 <span id="vps-public-key">{{ vps_public_key or 'Wird geladen...' }}</span>
             </div>
-            <button onclick="copyToClipboard('vps-public-key')" class="btn btn-primary btn-sm" style="margin-top: var(--space-sm);">
+            <button onclick="copyToClipboard('vps-public-key')" 
+                    class="mt-2 bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors">
                 📋 Kopieren
             </button>
         </div>
         
-        <div class="dashboard-card">
-            <h3 class="font-medium text-secondary mb-2">VPS IP-Adresse:</h3>
-            <div class="code-block">
+        <div class="bg-white rounded-lg p-4 border">
+            <h3 class="font-medium text-gray-700 mb-2">VPS IP-Adresse:</h3>
+            <div class="bg-gray-100 rounded p-2 font-mono text-sm">
                 <span id="vps-ip">{{ vps_ip or 'Automatisch erkannt' }}</span>
             </div>
-            <button onclick="copyToClipboard('vps-ip')" class="btn btn-primary btn-sm" style="margin-top: var(--space-sm);">
+            <button onclick="copyToClipboard('vps-ip')" 
+                    class="mt-2 bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors">
                 📋 Kopieren
             </button>
         </div>
     </div>
     
-    <div class="dashboard-card mb-lg">
-        <h3 class="font-medium text-secondary mb-2">🚀 Gateway-PC One-Liner (Komplette Installation):</h3>
-        <div class="code-block">
+    <div class="bg-white rounded-lg p-4 border">
+        <h3 class="font-medium text-gray-700 mb-2">🚀 Gateway-PC One-Liner (Komplette Installation):</h3>
+        <div class="bg-gray-900 text-green-400 rounded p-3 font-mono text-xs overflow-x-auto">
             <div id="gateway-oneliner-command">
                 curl -s https://raw.githubusercontent.com/cryptofluffy/gateway-project/main/gateway-pc/quick-install.sh | sudo bash -s {{ vps_ip or 'VPS_IP' }} {{ vps_public_key or 'VPS_PUBLIC_KEY' }}
             </div>
         </div>
-        <button onclick="copyToClipboard('gateway-oneliner-command')" class="btn btn-secondary btn-sm" style="margin-top: var(--space-sm);">
+        <button onclick="copyToClipboard('gateway-oneliner-command')" 
+                class="mt-2 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors">
             📋 One-Liner kopieren
         </button>
-        <div style="margin-top: var(--space-sm); font-size: var(--font-size-xs); color: var(--text-muted);">
+        <div class="mt-2 text-xs text-gray-600">
             ⚡ Führt automatisch aus: Installation → Konfiguration → Start → Reboot
         </div>
+    </div>
+    
+    <div class="mt-4 text-sm text-gray-600">
+        💡 Diese Daten brauchst du für die Gateway-PC Konfiguration
     </div>
 </div>
 
 <!-- Gateway-Client Management -->
-<div class="dashboard-card mb-6">
-    <h2 class="text-xl font-bold text-primary mb-4">Gateway-Client hinzufügen</h2>
+<div class="bg-white rounded-lg shadow-md p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-800 mb-4">Gateway-Client hinzufügen</h2>
     
-    <div class="interface-config">
-        <h3 class="font-medium text-primary mb-3">Neuen Gateway-PC verbinden:</h3>
+    <div class="bg-blue-50 rounded-lg p-4 mb-4">
+        <h3 class="font-medium text-gray-700 mb-3">Neuen Gateway-PC verbinden:</h3>
         
         <form id="add-gateway-form" class="space-y-4">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-secondary mb-2">Gateway Name</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Gateway Name</label>
                     <input type="text" id="gateway_name" name="gateway_name" placeholder="z.B. Heimnetz-Gateway" required
-                           class="form-input">
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium text-secondary mb-2">Standort/Beschreibung</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Standort/Beschreibung</label>
                     <input type="text" id="gateway_location" name="gateway_location" placeholder="z.B. Hamburg Büro"
-                           class="form-input">
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium text-secondary mb-2">Gateway Public Key</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Gateway Public Key</label>
                     <input type="text" id="gateway_public_key" name="gateway_public_key" placeholder="Vom Gateway-PC kopieren" required
-                           class="form-input">
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
             </div>
             
             <!-- Netzwerkschnittstellen-Konfiguration -->
-            <div class="interface-config">
-                <h4 class="font-medium text-primary mb-3">🌐 Netzwerkschnittstellen-Konfiguration</h4>
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h4 class="font-medium text-gray-700 mb-3">🌐 Netzwerkschnittstellen-Konfiguration</h4>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-secondary mb-2">WAN-Interface (Internet)</label>
-                        <select name="wan_interface" id="wan_interface" class="form-input">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">WAN-Interface (Internet)</label>
+                        <select name="wan_interface" id="wan_interface" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="auto">🔄 Automatisch erkennen</option>
                         </select>
                     </div>
                     
                     <div>
-                        <label class="block text-sm font-medium text-secondary mb-2">LAN-Interface (Server)</label>
-                        <select name="lan_interface" id="lan_interface" class="form-input">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">LAN-Interface (Server)</label>
+                        <select name="lan_interface" id="lan_interface" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="auto">🔄 Automatisch erkennen</option>
                         </select>
                     </div>
@@ -306,19 +233,19 @@
                 <!-- Custom Interface Inputs -->
                 <div id="custom-interfaces" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 hidden">
                     <div>
-                        <label class="block text-sm font-medium text-secondary mb-2">Custom WAN Interface</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Custom WAN Interface</label>
                         <input type="text" name="custom_wan" placeholder="z.B. wlp2s0"
-                               class="form-input">
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-secondary mb-2">Custom LAN Interface</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Custom LAN Interface</label>
                         <input type="text" name="custom_lan" placeholder="z.B. enp3s0"
-                               class="form-input">
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
                 </div>
                 
-                <div class="mt-3 p-3 rounded border-l-4" style="background: var(--secondary-bg); border-color: var(--accent-primary);">
-                    <div class="text-sm text-secondary">
+                <div class="mt-3 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
+                    <div class="text-sm text-blue-800">
                         💡 <strong>Interface-Zuordnung:</strong> WAN für VPS-Verbindung, LAN für Server-Netzwerk<br>
                         🔄 <strong>Automatisch:</strong> Gateway wählt beste verfügbare Interfaces
                     </div>
@@ -326,23 +253,24 @@
             </div>
             
             <div class="flex justify-end">
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" 
+                        class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-6 rounded-md transition-colors">
                     Gateway hinzufügen
                 </button>
             </div>
         </form>
         
-        <div class="mt-3 text-sm text-muted">
+        <div class="mt-3 text-sm text-gray-600">
             💡 Der Gateway Public Key wird nach der Installation auf dem Gateway-PC angezeigt
         </div>
     </div>
 </div>
 
 <!-- Port-Weiterleitungen Übersicht -->
-<div class="dashboard-card">
+<div class="bg-white rounded-lg shadow-md p-6">
     <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-bold text-primary">Aktive Port-Weiterleitungen</h2>
-        <a href="/port-forwards" class="btn btn-primary">
+        <h2 class="text-xl font-bold text-gray-800">Aktive Port-Weiterleitungen</h2>
+        <a href="/port-forwards" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors">
             Verwalten
         </a>
     </div>
@@ -350,20 +278,21 @@
     {% if port_forwards %}
     <div class="space-y-2">
         {% for rule_id, rule in port_forwards.items() %}
-        <div class="flex justify-between items-center p-3 rounded-lg" style="background: var(--secondary-bg);">
+        <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
             <div>
                 <span class="font-medium">Port {{ rule.external_port }}/{{ rule.protocol }}</span>
-                <span class="text-muted mx-2">→</span>
-                <span style="color: var(--accent-primary);">{{ rule.internal_ip }}:{{ rule.internal_port }}</span>
+                <span class="text-gray-500 mx-2">→</span>
+                <span class="text-blue-600">{{ rule.internal_ip }}:{{ rule.internal_port }}</span>
             </div>
-            <span class="text-xs text-muted">{{ rule.created[:19] }}</span>
+            <span class="text-xs text-gray-500">{{ rule.created[:19] }}</span>
         </div>
         {% endfor %}
     </div>
     {% else %}
-    <p class="text-muted">Keine Port-Weiterleitungen konfiguriert</p>
+    <p class="text-gray-500 italic">Keine Port-Weiterleitungen konfiguriert</p>
     {% endif %}
 </div>
 
+<script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}
