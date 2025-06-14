@@ -1,0 +1,11 @@
+[Unit]
+Description=Run SiteConnector Network Scanner every 5 minutes
+Requires=network-scanner.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

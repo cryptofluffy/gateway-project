@@ -1,23 +1,19 @@
 [Unit]
-Description=SiteConnector Gateway Monitoring
+Description=SiteConnector Network Scanner
 After=network.target siteconnector-gateway.service
 Wants=network.target
 
 [Service]
-Type=simple
+Type=oneshot
 User=root
 WorkingDirectory=/usr/local/bin
-Environment=METRICS_SEND_INTERVAL=60
-Environment=GATEWAY_MONITORING_ENABLED=true
 Environment=LOG_LEVEL=INFO
-ExecStart=/usr/bin/python3 /usr/local/bin/system_monitor.py
-Restart=always
-RestartSec=30
+ExecStart=/usr/bin/python3 /usr/local/bin/network-scanner.py
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=siteconnector-monitoring
+SyslogIdentifier=siteconnector-scanner
 
-# Security settings (relaxed for gateway functionality)
+# Security settings (relaxed for network scanning)
 NoNewPrivileges=no
 PrivateTmp=yes
 ReadWritePaths=/etc/siteconnector /etc/wireguard-gateway /var/log

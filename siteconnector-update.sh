@@ -194,11 +194,14 @@ elif [ "$SYSTEM_TYPE" = "gateway" ]; then
     systemctl stop siteconnector-gateway 2>/dev/null || true
     
     # System-Python-Pakete installieren
+    echo "📦 Python-Abhängigkeiten installieren..."
     apt install -y python3-psutil python3-requests python3-full python3-pip python3-tk
     
     # Gateway Code aktualisieren
+    echo "📁 Gateway-Software aktualisieren..."
     cp /tmp/siteconnector-update/gateway-software/gateway_manager.py /usr/local/bin/
     cp /tmp/siteconnector-update/gateway-software/system_monitor.py /usr/local/bin/
+    cp /tmp/siteconnector-update/gateway-software/network-scanner.py /usr/local/bin/
     cp /tmp/siteconnector-update/gateway-software/gui_app.py /usr/local/bin/ 2>/dev/null || true
     
     # SiteConnector-Befehle erstellen
@@ -211,12 +214,14 @@ EOF
     # Berechtigungen setzen
     chmod +x /usr/local/bin/gateway_manager.py
     chmod +x /usr/local/bin/system_monitor.py
+    chmod +x /usr/local/bin/network-scanner.py
     chmod +x /usr/local/bin/gui_app.py 2>/dev/null || true
     chmod +x /usr/local/bin/siteconnector-gateway
     
     # Systemd-Services aktualisieren
     echo "📋 SiteConnector Gateway Services konfigurieren..."
     
+    # Hauptservice
     cp /tmp/siteconnector-update/gateway-software/systemd/gateway-manager.service /etc/systemd/system/siteconnector-gateway.service 2>/dev/null || \
     cat > /etc/systemd/system/siteconnector-gateway.service << EOF
 [Unit]
@@ -234,6 +239,7 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
     
+    # Monitoring service
     cp /tmp/siteconnector-update/gateway-software/systemd/gateway-monitoring.service /etc/systemd/system/siteconnector-monitoring.service 2>/dev/null || \
     cat > /etc/systemd/system/siteconnector-monitoring.service << EOF
 [Unit]
@@ -251,6 +257,10 @@ RestartSec=30
 WantedBy=multi-user.target
 EOF
     
+    # Network scanner service and timer
+    cp /tmp/siteconnector-update/gateway-software/systemd/network-scanner.service /etc/systemd/system/ 2>/dev/null || true
+    cp /tmp/siteconnector-update/gateway-software/systemd/network-scanner.timer /etc/systemd/system/ 2>/dev/null || true
+    
     # Backwards compatibility
     ln -sf /etc/systemd/system/siteconnector-gateway.service /etc/systemd/system/gateway-manager.service 2>/dev/null || true
     ln -sf /etc/systemd/system/siteconnector-monitoring.service /etc/systemd/system/gateway-monitoring.service 2>/dev/null || true
@@ -263,8 +273,10 @@ EOF
     systemctl daemon-reload
     systemctl enable siteconnector-gateway
     systemctl enable siteconnector-monitoring
+    systemctl enable network-scanner.timer
     systemctl start siteconnector-gateway
     systemctl start siteconnector-monitoring
+    systemctl start network-scanner.timer
     
     echo "✅ SiteConnector Gateway Update abgeschlossen"
     echo "=============================================="
