@@ -3,6 +3,29 @@
 {% block title %}<span data-i18n="dashboard.title">Dashboard - WireGuard Gateway</span>{% endblock %}
 
 {% block content %}
+<!-- Navigation -->
+<nav class="bg-white shadow-lg mb-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 flex items-center">
+                    <a href="/" class="text-2xl font-bold text-indigo-600">🔒 WireGuard Gateway</a>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <a href="/" class="text-gray-600 hover:text-indigo-600 transition-colors">
+                    <span data-i18n="nav.home">Home</span>
+                </a>
+                <a href="/dashboard" class="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium">
+                    <span data-i18n="nav.dashboard">Dashboard</span>
+                </a>
+                <a href="/port-forwards" class="text-gray-600 hover:text-indigo-600 transition-colors">
+                    <span data-i18n="nav.port_forwards">Port Forwards</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</nav>
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
     <!-- Tunnel Status -->
     <div class="bg-white rounded-lg shadow-md p-6">
