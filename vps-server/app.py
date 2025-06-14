@@ -968,29 +968,30 @@ def api_network_interfaces():
             'message': f'Fehler beim Abrufen der Gateway-Schnittstellen: {str(e)}'
         }), 500
 
+# Gateway-gemeldete Geräte speichern
+gateway_reported_devices = {}
+
 @app.route('/api/devices', methods=['GET'])
 @limiter.limit("10 per minute")
 def api_devices():
     """API: Verfügbare Geräte im Netzwerk mit Hostnamen"""
     try:
-        devices = NetworkUtils.get_connected_devices_with_hostnames()
+        # VPS-lokale Geräte (WireGuard Clients)
+        vps_devices = NetworkUtils.get_connected_devices_with_hostnames()
         
-        # Füge häufige Gateway-PC lokale IPs hinzu für Port-Forwarding
-        common_gateway_devices = [
-            {'ip': '10.0.0.100', 'hostname': 'Server-1', 'name': 'Lokaler Server', 'status': 'reachable'},
-            {'ip': '10.0.0.101', 'hostname': 'Server-2', 'name': 'Lokaler Server', 'status': 'reachable'},
-            {'ip': '10.0.0.102', 'hostname': 'Server-3', 'name': 'Lokaler Server', 'status': 'reachable'},
-            {'ip': '192.168.1.100', 'hostname': 'NAS', 'name': 'Network Storage', 'status': 'reachable'},
-            {'ip': '192.168.1.101', 'hostname': 'Media-Server', 'name': 'Media Server', 'status': 'reachable'},
-            {'ip': '192.168.178.100', 'hostname': 'Home-Server', 'name': 'Home Server', 'status': 'reachable'},
-        ]
+        # Gateway-gemeldete lokale Netzwerk-Geräte
+        gateway_devices = []
+        for gateway_id, device_list in gateway_reported_devices.items():
+            gateway_devices.extend(device_list)
         
-        # Füge Gateway-lokale Geräte zu den gefundenen hinzu
-        all_devices = devices + common_gateway_devices
+        # Alle Geräte kombinieren
+        all_devices = vps_devices + gateway_devices
         
         return jsonify({
             'success': True,
-            'devices': all_devices
+            'devices': all_devices,
+            'vps_devices': len(vps_devices),
+            'gateway_devices': len(gateway_devices)
         })
     except Exception as e:
         logger.error(f"Error getting network devices: {e}")
@@ -998,6 +999,46 @@ def api_devices():
             'success': False,
             'message': f'Fehler beim Ermitteln der Netzwerkgeräte: {str(e)}'
         }), 500
+
+@app.route('/api/gateway-network-devices', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_gateway_network_devices():
+    """API: Gateway-PC meldet seine lokalen Netzwerk-Geräte"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'Keine Daten erhalten'}), 400
+        
+        gateway_id = data.get('gateway_id', 'unknown')
+        devices = data.get('devices', [])
+        
+        # Validiere Geräte-Daten
+        validated_devices = []
+        for device in devices:
+            if 'ip' in device and InputValidator.validate_ip_address(device['ip']):
+                validated_devices.append({
+                    'ip': device['ip'],
+                    'hostname': device.get('hostname'),
+                    'name': device.get('name', device.get('hostname', 'Unbekanntes Gerät')),
+                    'mac': device.get('mac'),
+                    'status': 'gateway_local',
+                    'gateway_id': gateway_id
+                })
+        
+        # Speichere Gateway-Geräte
+        gateway_reported_devices[gateway_id] = validated_devices
+        
+        logger.info(f"Gateway {gateway_id} meldet {len(validated_devices)} Netzwerk-Geräte")
+        
+        return jsonify({
+            'success': True,
+            'message': f'{len(validated_devices)} Geräte empfangen',
+            'devices_count': len(validated_devices)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error receiving gateway network devices: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/port-forwards', methods=['GET', 'POST', 'DELETE'])
 @limiter.limit("15 per minute")
