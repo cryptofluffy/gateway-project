@@ -383,147 +383,128 @@ EOF
     # DHCP-Server installieren
     apt install -y isc-dhcp-server
     
-    # Gateway Manager verwenden um korrektes Interface zu ermitteln
-    if [ -f "/usr/local/bin/gateway_manager.py" ]; then
-        echo "🔍 Ermittle korrektes LAN-Interface über Gateway Manager..."
-        
-        # Temporäres Python-Script um Interface zu ermitteln
-        cat > /tmp/detect_lan_interface.py << 'EOF'
-#!/usr/bin/env python3
-import sys
-sys.path.append('/usr/local/bin')
-try:
-    from gateway_manager import WireGuardGateway
-    gateway = WireGuardGateway()
-    lan_iface = gateway.get_lan_interface_for_dhcp()
-    print(lan_iface)
-except Exception as e:
-    # Fallback: Auto-detect
-    import subprocess
-    try:
-        result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True)
-        interfaces = []
-        for line in result.stdout.split('\n'):
-            if ': ' in line and not line.startswith(' '):
-                iface = line.split(':')[1].strip().split('@')[0]
-                if iface not in ['lo'] and not iface.startswith('wg'):
-                    interfaces.append(iface)
-        # Zweites Interface ist normalerweise LAN
-        lan_iface = interfaces[1] if len(interfaces) > 1 else 'eth0'
-        print(lan_iface)
-    except:
-        print('eth0')  # Absolute Fallback
-EOF
-        
-        chmod +x /tmp/detect_lan_interface.py
-        LAN_INTERFACE=$(python3 /tmp/detect_lan_interface.py)
-        rm -f /tmp/detect_lan_interface.py
-    else
-        echo "⚠️ Gateway Manager nicht gefunden - verwende auto-detect..."
-        # Fallback: Interface-Auto-Detection
-        LAN_INTERFACE=$(ip link show | grep -E '^[0-9]+: (eth|en)' | head -2 | tail -1 | cut -d: -f2 | tr -d ' ')
-        if [ -z "$LAN_INTERFACE" ]; then
-            LAN_INTERFACE="eth0"  # Absolute Fallback
-        fi
-    fi
+    # Keine automatischen Fallbacks mehr - nur Dashboard-Konfiguration
+    echo "🎯 Interface-Konfiguration erfolgt ausschließlich über Dashboard-Einstellungen"
     
-    echo "🖧 Verwende LAN-Interface für Server-Netzwerk: $LAN_INTERFACE"
+    # KRITISCH: Interface MUSS aus Dashboard-Konfiguration kommen
+    echo "🔍 Lade LAN-Interface aus Dashboard-Konfiguration..."
     
-    # LAN Interface aus Gateway Manager Konfiguration holen
-    if [ -f "/usr/local/bin/gateway_manager.py" ]; then
-        echo "🔍 Ermittle LAN-Interface aus Gateway Manager Konfiguration..."
-        DETECTED_LAN=$(python3 -c "
-import sys
-sys.path.append('/usr/local/bin')
-try:
-    from gateway_manager import GatewayManager
-    gm = GatewayManager()
-    interfaces = gm.get_actual_interfaces()
-    print(interfaces.get('lan_interface', 'eth0'))
-except:
-    print('eth0')
-" 2>/dev/null)
-        
-        if [ -n "$DETECTED_LAN" ] && [ "$DETECTED_LAN" != "eth0" ]; then
-            LAN_INTERFACE="$DETECTED_LAN"
-            echo "✅ LAN-Interface aus Dashboard-Konfiguration: $LAN_INTERFACE"
-        fi
-    fi
-    
-    # Gateway Manager Interface-Erkennung für korrektes LAN-Interface
-    echo "🔍 Ermittle korrektes LAN-Interface aus Gateway Manager..."
-    
-    # Python-Script für Interface-Erkennung
+    # Python-Script für strikte Dashboard-Interface-Prüfung
     python3 << 'INTERFACE_DETECT_EOF'
 import sys
 sys.path.append('/usr/local/bin')
 
+# Verfügbare Interfaces ermitteln für Validierung
+import subprocess
+available_interfaces = []
+try:
+    result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True)
+    for line in result.stdout.split('\n'):
+        if ':' in line and ('eth' in line or 'enp' in line or 'ens' in line):
+            parts = line.split(':')
+            if len(parts) >= 2:
+                iface = parts[1].strip().split('@')[0]
+                if 'docker' not in iface and 'br-' not in iface and 'lo' not in iface:
+                    available_interfaces.append(iface)
+except:
+    pass
+
+print(f"🔍 Verfügbare Interfaces: {', '.join(available_interfaces)}")
+
+# Dashboard-Konfiguration laden
+dashboard_lan = None
+dashboard_wan = None
+config_error = None
+
 try:
     from gateway_manager import GatewayManager
     gm = GatewayManager()
     interfaces = gm.get_actual_interfaces()
-    lan_interface = interfaces.get('lan_interface', 'eth0')
-    wan_interface = interfaces.get('wan_interface', 'eth0')
-    print(f"✅ Gateway Manager: WAN={wan_interface}, LAN={lan_interface}")
+    dashboard_lan = interfaces.get('lan_interface')
+    dashboard_wan = interfaces.get('wan_interface')
+    
+    print(f"📊 Dashboard-Konfiguration: WAN={dashboard_wan}, LAN={dashboard_lan}")
+    
+    # Validierung der Dashboard-Einstellungen
+    if not dashboard_lan or dashboard_lan in ['auto', '']:
+        config_error = "LAN-Interface im Dashboard nicht konfiguriert oder auf 'auto' gesetzt"
+    elif dashboard_lan not in available_interfaces:
+        config_error = f"LAN-Interface '{dashboard_lan}' im Dashboard konfiguriert, aber nicht verfügbar"
+    
+    if not dashboard_wan or dashboard_wan in ['auto', '']:
+        if not config_error:
+            config_error = "WAN-Interface im Dashboard nicht konfiguriert oder auf 'auto' gesetzt"
+    elif dashboard_wan not in available_interfaces:
+        if not config_error:
+            config_error = f"WAN-Interface '{dashboard_wan}' im Dashboard konfiguriert, aber nicht verfügbar"
+    
+    if dashboard_lan == dashboard_wan and dashboard_lan is not None:
+        config_error = f"WAN und LAN Interface sind identisch ({dashboard_lan}) - verschiedene Interfaces erforderlich"
+        
 except Exception as e:
-    print(f"⚠️ Gateway Manager Fehler: {e}")
-    # Fallback: Automatische Erkennung
-    import subprocess
-    try:
-        result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True)
-        interfaces = []
-        for line in result.stdout.split('\n'):
-            if ':' in line and ('eth' in line or 'enp' in line or 'ens' in line):
-                parts = line.split(':')
-                if len(parts) >= 2:
-                    iface = parts[1].strip().split('@')[0]
-                    if 'docker' not in iface and 'br-' not in iface:
-                        interfaces.append(iface)
-        
-        # WAN = Interface mit Default-Route  
-        try:
-            route_result = subprocess.run(['ip', 'route', 'show', 'default'], capture_output=True, text=True)
-            wan_interface = route_result.stdout.split()[4] if route_result.stdout else interfaces[0]
-        except:
-            wan_interface = interfaces[0] if interfaces else 'eth0'
-        
-        # LAN = Anderes verfügbares Interface
-        lan_interface = next((iface for iface in interfaces if iface != wan_interface), interfaces[0] if interfaces else 'eth0')
-        print(f"✅ Fallback: WAN={wan_interface}, LAN={lan_interface}")
-    except Exception as e2:
-        print(f"❌ Fallback fehlgeschlagen: {e2}")
-        wan_interface = 'eth0'
-        lan_interface = 'eth0'
+    config_error = f"Gateway Manager nicht verfügbar oder fehlerhaft: {e}"
 
-# Gateway-IP für LAN-Interface setzen (192.168.100.x Netzwerk)
-import subprocess
-try:
-    # Interface für Gateway-Netzwerk konfigurieren
-    subprocess.run(['ip', 'addr', 'flush', 'dev', lan_interface], capture_output=True)
-    subprocess.run(['ip', 'addr', 'add', '192.168.100.1/24', 'dev', lan_interface], capture_output=True)
-    subprocess.run(['ip', 'link', 'set', lan_interface, 'up'], capture_output=True)
-    print(f"✅ Interface {lan_interface} konfiguriert: 192.168.100.1/24")
+# Ergebnis ausgeben
+if config_error:
+    print(f"❌ KONFIGURATIONSFEHLER: {config_error}")
+    print("")
+    print("🔧 LÖSUNG:")
+    print("1. Öffne das Dashboard im Browser")
+    print("2. Gehe zu Gateway-Einstellungen")
+    print("3. Wähle korrekte Netzwerk-Interfaces:")
+    print(f"   - WAN-Interface: {available_interfaces[0] if available_interfaces else 'eth0'} (für Internet-Verbindung)")
+    if len(available_interfaces) > 1:
+        print(f"   - LAN-Interface: {available_interfaces[1]} (für Server-Netzwerk)")
+    else:
+        print("   - LAN-Interface: Zweites verfügbares Interface")
+    print("4. Speichere die Einstellungen")
+    print("5. Führe 'sudo siteconnector-update' erneut aus")
+    print("")
+    print(f"📡 Verfügbare Interfaces: {', '.join(available_interfaces)}")
+    
+    # Fehler-Flag setzen
+    with open('/tmp/gateway_config_error.txt', 'w') as f:
+        f.write(config_error)
+else:
+    print(f"✅ Dashboard-Konfiguration korrekt: WAN={dashboard_wan}, LAN={dashboard_lan}")
     
     # Interface-Namen für weitere Verwendung speichern
     with open('/tmp/gateway_interfaces.txt', 'w') as f:
-        f.write(f"WAN_INTERFACE={wan_interface}\n")
-        f.write(f"LAN_INTERFACE={lan_interface}\n")
+        f.write(f"WAN_INTERFACE={dashboard_wan}\n")
+        f.write(f"LAN_INTERFACE={dashboard_lan}\n")
         
-except Exception as e:
-    print(f"❌ Interface-Konfiguration Fehler: {e}")
-    with open('/tmp/gateway_interfaces.txt', 'w') as f:
-        f.write(f"WAN_INTERFACE=eth0\n")
-        f.write(f"LAN_INTERFACE=eth0\n")
+    # Interface für Gateway-Netzwerk konfigurieren
+    try:
+        subprocess.run(['ip', 'addr', 'flush', 'dev', dashboard_lan], capture_output=True)
+        subprocess.run(['ip', 'addr', 'add', '192.168.100.1/24', 'dev', dashboard_lan], capture_output=True)
+        subprocess.run(['ip', 'link', 'set', dashboard_lan, 'up'], capture_output=True)
+        print(f"✅ Interface {dashboard_lan} konfiguriert: 192.168.100.1/24")
+    except Exception as e:
+        print(f"❌ Interface-Konfiguration Fehler: {e}")
+        with open('/tmp/gateway_config_error.txt', 'w') as f:
+            f.write(f"Interface-Konfiguration fehlgeschlagen: {e}")
 INTERFACE_DETECT_EOF
+
+    # Prüfe auf Konfigurationsfehler
+    if [ -f "/tmp/gateway_config_error.txt" ]; then
+        echo ""
+        echo "❌ GATEWAY UPDATE ABGEBROCHEN"
+        echo "================================"
+        cat /tmp/gateway_config_error.txt
+        echo ""
+        echo "🎯 Das Gateway kann nur mit korrekter Dashboard-Konfiguration funktionieren!"
+        rm -f /tmp/gateway_config_error.txt
+        exit 1
+    fi
 
     # Interface-Namen aus temporärer Datei laden
     if [ -f "/tmp/gateway_interfaces.txt" ]; then
         source /tmp/gateway_interfaces.txt
-        echo "🎯 Verwende Interfaces: WAN=$WAN_INTERFACE, LAN=$LAN_INTERFACE"
+        echo "🎯 Verwende Dashboard-Interfaces: WAN=$WAN_INTERFACE, LAN=$LAN_INTERFACE"
         rm -f /tmp/gateway_interfaces.txt
     else
-        LAN_INTERFACE="eth0"  # Fallback
-        echo "⚠️ Fallback zu eth0"
+        echo "❌ Interface-Konfiguration fehlgeschlagen - keine gültigen Interfaces ermittelt"
+        exit 1
     fi
     
     # DHCP-Konfiguration mit erkanntem Interface erstellen
