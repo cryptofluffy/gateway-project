@@ -527,21 +527,64 @@ PersistentKeepalive = 25
         return stats
     
     def test_connectivity(self):
-        """Teste Verbindung zum VPS"""
+        """Teste Verbindung zum VPS und Internet"""
+        results = {}
+        
+        # Test 1: VPS Verbindung
         try:
             result = subprocess.run(['ping', '-c', '3', '10.8.0.1'], 
                                   capture_output=True, text=True, timeout=10)
-            return {
+            results['vps'] = {
                 'success': result.returncode == 0,
                 'output': result.stdout,
                 'latency': self.extract_ping_time(result.stdout) if result.returncode == 0 else None
             }
         except Exception as e:
-            return {
+            results['vps'] = {
                 'success': False,
                 'output': str(e),
                 'latency': None
             }
+        
+        # Test 2: Internet Verbindung (DNS)
+        try:
+            result = subprocess.run(['ping', '-c', '3', '8.8.8.8'], 
+                                  capture_output=True, text=True, timeout=10)
+            results['internet'] = {
+                'success': result.returncode == 0,
+                'output': result.stdout,
+                'latency': self.extract_ping_time(result.stdout) if result.returncode == 0 else None
+            }
+        except Exception as e:
+            results['internet'] = {
+                'success': False,
+                'output': str(e),
+                'latency': None
+            }
+        
+        # Test 3: DNS Auflösung
+        try:
+            result = subprocess.run(['nslookup', 'google.com'], 
+                                  capture_output=True, text=True, timeout=5)
+            results['dns'] = {
+                'success': result.returncode == 0,
+                'output': result.stdout
+            }
+        except Exception as e:
+            results['dns'] = {
+                'success': False,
+                'output': str(e)
+            }
+        
+        # Gesamtstatus
+        results['overall'] = {
+            'success': results['vps']['success'] and results['internet']['success'],
+            'vps_reachable': results['vps']['success'],
+            'internet_reachable': results['internet']['success'],
+            'dns_working': results['dns']['success']
+        }
+        
+        return results
     
     def extract_ping_time(self, ping_output):
         """Extrahiere Ping-Zeit aus ping-Ausgabe"""

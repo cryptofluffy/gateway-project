@@ -11,6 +11,7 @@ import time
 import socket
 import logging
 import re
+import os
 from typing import List, Dict, Optional
 
 # Logging Setup
@@ -24,17 +25,20 @@ class NetworkScanner:
         
     def _get_vps_url(self) -> str:
         """VPS URL aus Gateway-Konfiguration lesen"""
-        try:
-            # Versuche VPS URL aus WireGuard config zu lesen
-            with open('/etc/wireguard/wg0.conf', 'r') as f:
-                content = f.read()
-                # Suche nach Endpoint
-                match = re.search(r'Endpoint\s*=\s*([^:]+)', content)
-                if match:
-                    vps_ip = match.group(1)
-                    return f"http://{vps_ip}:8080"
-        except:
-            pass
+        # Versuche verschiedene WireGuard config Pfade
+        config_paths = ['/etc/wireguard/gateway.conf', '/etc/wireguard/wg0.conf']
+        
+        for config_path in config_paths:
+            try:
+                with open(config_path, 'r') as f:
+                    content = f.read()
+                    # Suche nach Endpoint
+                    match = re.search(r'Endpoint\s*=\s*([^:]+)', content)
+                    if match:
+                        vps_ip = match.group(1)
+                        return f"http://{vps_ip}:8080"
+            except:
+                continue
         
         # Fallback
         return "http://127.0.0.1:8080"  # Für lokalen Test
@@ -78,16 +82,18 @@ class NetworkScanner:
                         parts = line.split()
                         if len(parts) > 0 and '/' in parts[0]:
                             network = parts[0]
-                            # Nur typische private Netzwerke
+                            # Erweiterte private Netzwerke für Server-Bereiche
                             if any(network.startswith(prefix) for prefix in 
-                                  ['192.168.', '10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.']):
+                                  ['192.168.', '10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.',
+                                   '172.21.', '172.22.', '172.23.', '172.24.', '172.25.', '172.26.',
+                                   '172.27.', '172.28.', '172.29.', '172.30.', '172.31.']):
                                 networks.append(network)
         except Exception as e:
             logger.error(f"Error getting local networks: {e}")
         
-        # Fallback zu häufigen Netzwerken
+        # Fallback zu häufigen Netzwerken inkl. typischer Server-Bereiche
         if not networks:
-            networks = ['192.168.1.0/24', '192.168.178.0/24', '10.0.0.0/24']
+            networks = ['192.168.1.0/24', '192.168.178.0/24', '10.0.0.0/24', '10.0.1.0/24', '172.16.0.0/24']
         
         return networks
     
@@ -253,6 +259,10 @@ class NetworkScanner:
         """Führe einen kompletten Scan-Zyklus aus"""
         logger.info(f"Starting network scan for gateway {self.gateway_id}")
         
+        # Prüfe ob Scanner-Service installiert ist
+        if not self._check_service_installation():
+            logger.warning("Network scanner service is not properly installed")
+        
         # Scanne Netzwerk
         devices = self.scan_network()
         logger.info(f"Found {len(devices)} devices")
@@ -266,6 +276,40 @@ class NetworkScanner:
                 logger.error("Failed to report devices to VPS")
         else:
             logger.warning("No devices found in network scan")
+    
+    def _check_service_installation(self) -> bool:
+        """Prüfe ob der Network Scanner Service korrekt installiert ist"""
+        try:
+            # Prüfe ob Service-Dateien existieren
+            service_files = [
+                '/etc/systemd/system/network-scanner.service',
+                '/etc/systemd/system/network-scanner.timer'
+            ]
+            
+            for file_path in service_files:
+                if not os.path.exists(file_path):
+                    logger.warning(f"Service file missing: {file_path}")
+                    return False
+            
+            # Prüfe Service-Status
+            result = subprocess.run(['systemctl', 'is-enabled', 'network-scanner.timer'], 
+                                  capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.warning("Network scanner timer is not enabled")
+                return False
+            
+            result = subprocess.run(['systemctl', 'is-active', 'network-scanner.timer'], 
+                                  capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.warning("Network scanner timer is not active")
+                return False
+            
+            logger.info("Network scanner service is properly installed and running")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error checking service installation: {e}")
+            return False
 
 def main():
     scanner = NetworkScanner()
