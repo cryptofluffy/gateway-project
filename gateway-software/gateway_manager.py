@@ -252,19 +252,30 @@ class WireGuardGateway:
 PrivateKey = {self.gateway_private_key}
 Address = 10.8.0.2/24
 Table = off
+DNS = 8.8.8.8, 8.8.4.4
 
-# Routing-Regeln für Gateway-Funktion
-PostUp = ip rule add from 10.0.0.0/24 table 200
+# Enhanced routing für Server-Internet-Zugang über VPN
+PostUp = ip rule add from 10.0.0.0/24 table 200 priority 100
 PostUp = ip route add default dev %i table 200
-PostUp = iptables -t nat -A POSTROUTING -o %i -j MASQUERADE
+PostUp = ip route add 10.0.0.0/24 dev eth1 table 200
+PostUp = iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o %i -j MASQUERADE
 PostUp = iptables -A FORWARD -i eth1 -o %i -j ACCEPT
 PostUp = iptables -A FORWARD -i %i -o eth1 -j ACCEPT
+PostUp = iptables -A FORWARD -s 10.0.0.0/24 -j ACCEPT
+PostUp = iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o %i -j MASQUERADE
+PostUp = iptables -A FORWARD -i eth0 -o %i -j ACCEPT
+PostUp = iptables -A FORWARD -i %i -o eth0 -j ACCEPT
 
-PostDown = ip rule del from 10.0.0.0/24 table 200
-PostDown = ip route del default dev %i table 200
-PostDown = iptables -t nat -D POSTROUTING -o %i -j MASQUERADE
-PostDown = iptables -D FORWARD -i eth1 -o %i -j ACCEPT
-PostDown = iptables -D FORWARD -i %i -o eth1 -j ACCEPT
+PostDown = ip rule del from 10.0.0.0/24 table 200 2>/dev/null || true
+PostDown = ip route del default dev %i table 200 2>/dev/null || true
+PostDown = ip route del 10.0.0.0/24 dev eth1 table 200 2>/dev/null || true
+PostDown = iptables -t nat -D POSTROUTING -s 10.0.0.0/24 -o %i -j MASQUERADE 2>/dev/null || true
+PostDown = iptables -D FORWARD -i eth1 -o %i -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -i %i -o eth1 -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -s 10.0.0.0/24 -j ACCEPT 2>/dev/null || true
+PostDown = iptables -t nat -D POSTROUTING -s 192.168.1.0/24 -o %i -j MASQUERADE 2>/dev/null || true
+PostDown = iptables -D FORWARD -i eth0 -o %i -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -i %i -o eth0 -j ACCEPT 2>/dev/null || true
 
 [Peer]
 PublicKey = {self.vps_public_key}
@@ -601,12 +612,23 @@ PersistentKeepalive = 25
     def setup_dhcp_server(self):
         """DHCP-Server für Server-Netzwerk (eth1) einrichten"""
         dhcp_config = """
-# DHCP-Konfiguration für Gateway eth1
+# DHCP-Konfiguration für Gateway eth1 - Internet über VPN
 subnet 10.0.0.0 netmask 255.255.255.0 {
     range 10.0.0.100 10.0.0.200;
     option routers 10.0.0.1;
     option domain-name-servers 8.8.8.8, 8.8.4.4;
-    default-lease-time 600;
+    option domain-name "gateway.local";
+    default-lease-time 3600;
+    max-lease-time 7200;
+}
+
+# DHCP-Konfiguration für Heimnetzwerk (eth0)
+subnet 192.168.1.0 netmask 255.255.255.0 {
+    range 192.168.1.100 192.168.1.200;
+    option routers 192.168.1.254;
+    option domain-name-servers 8.8.8.8, 8.8.4.4;
+    option domain-name "home.local";
+    default-lease-time 3600;
     max-lease-time 7200;
 }
 """

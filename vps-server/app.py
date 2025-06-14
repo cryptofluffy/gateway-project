@@ -1221,6 +1221,66 @@ def api_alerts():
         logger.error(f"Error in api_alerts: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/api/admin/update', methods=['POST'])
+@limiter.limit("1 per minute")
+def api_admin_update():
+    """API: Trigger gateway update via SSH"""
+    try:
+        # Get gateway IP from connected clients
+        gateway_ips = []
+        for client_id, client_info in gateway_clients.items():
+            if client_info.get('status') == 'connected':
+                # Extract IP from client_id or use known gateway IP
+                gateway_ips.append('192.168.100.1')  # Default gateway IP
+        
+        if not gateway_ips:
+            return jsonify({'success': False, 'message': 'No connected gateways found'}), 404
+        
+        results = []
+        for gateway_ip in gateway_ips:
+            try:
+                # SSH to gateway and run update
+                ssh_command = [
+                    'sshpass', '-p', 'gateway123',
+                    'ssh', '-o', 'StrictHostKeyChecking=no',
+                    f'admin@{gateway_ip}',
+                    'cd /opt/gateway && git pull && sudo /opt/gateway/scripts/install-network-scanner.sh && sudo systemctl restart gateway-manager'
+                ]
+                
+                result = subprocess.run(ssh_command, capture_output=True, text=True, timeout=60)
+                
+                if result.returncode == 0:
+                    results.append({
+                        'gateway': gateway_ip,
+                        'success': True,
+                        'output': result.stdout
+                    })
+                else:
+                    results.append({
+                        'gateway': gateway_ip,
+                        'success': False,
+                        'error': result.stderr
+                    })
+                    
+            except Exception as e:
+                results.append({
+                    'gateway': gateway_ip,
+                    'success': False,
+                    'error': str(e)
+                })
+        
+        overall_success = all(r['success'] for r in results)
+        
+        return jsonify({
+            'success': overall_success,
+            'message': f'Update completed for {len(results)} gateways',
+            'results': results
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in admin update: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 
 # Error Handlers
 @app.errorhandler(404)
