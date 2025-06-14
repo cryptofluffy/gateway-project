@@ -400,11 +400,14 @@ available_interfaces = []
 try:
     result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True)
     for line in result.stdout.split('\n'):
-        if ':' in line and ('eth' in line or 'enp' in line or 'ens' in line):
+        if ':' in line and not line.startswith(' '):
             parts = line.split(':')
             if len(parts) >= 2:
                 iface = parts[1].strip().split('@')[0]
-                if 'docker' not in iface and 'br-' not in iface and 'lo' not in iface:
+                # Nur echte Ethernet-Interfaces (eth, enp, ens, end) und keine virtuellen
+                if (iface.startswith(('eth', 'enp', 'ens', 'end')) and 
+                    'docker' not in iface and 'br-' not in iface and 'lo' not in iface and 
+                    'veth' not in iface and 'wg' not in iface):
                     available_interfaces.append(iface)
 except:
     pass
@@ -417,28 +420,25 @@ dashboard_wan = None
 config_error = None
 
 try:
-    from gateway_manager import GatewayManager
-    gm = GatewayManager()
-    interfaces = gm.get_actual_interfaces()
-    dashboard_lan = interfaces.get('lan_interface')
-    dashboard_wan = interfaces.get('wan_interface')
+    from gateway_manager import WireGuardGateway
+    gw = WireGuardGateway()
+    
+    # get_actual_interfaces gibt (wan_iface, lan_iface) Tupel zurück
+    wan_iface, lan_iface = gw.get_actual_interfaces()
+    dashboard_wan = wan_iface
+    dashboard_lan = lan_iface
     
     print(f"📊 Dashboard-Konfiguration: WAN={dashboard_wan}, LAN={dashboard_lan}")
     
     # Validierung der Dashboard-Einstellungen
-    if not dashboard_lan or dashboard_lan in ['auto', '']:
-        config_error = "LAN-Interface im Dashboard nicht konfiguriert oder auf 'auto' gesetzt"
+    # Prüfe ob genug Interfaces für WAN+LAN verfügbar sind
+    if len(available_interfaces) < 2:
+        config_error = f"Nur {len(available_interfaces)} Interface(s) verfügbar - Gateway benötigt mindestens 2 (WAN+LAN)"
     elif dashboard_lan not in available_interfaces:
-        config_error = f"LAN-Interface '{dashboard_lan}' im Dashboard konfiguriert, aber nicht verfügbar"
-    
-    if not dashboard_wan or dashboard_wan in ['auto', '']:
-        if not config_error:
-            config_error = "WAN-Interface im Dashboard nicht konfiguriert oder auf 'auto' gesetzt"
+        config_error = f"LAN-Interface '{dashboard_lan}' nicht verfügbar. Verfügbar: {', '.join(available_interfaces)}"
     elif dashboard_wan not in available_interfaces:
-        if not config_error:
-            config_error = f"WAN-Interface '{dashboard_wan}' im Dashboard konfiguriert, aber nicht verfügbar"
-    
-    if dashboard_lan == dashboard_wan and dashboard_lan is not None:
+        config_error = f"WAN-Interface '{dashboard_wan}' nicht verfügbar. Verfügbar: {', '.join(available_interfaces)}"
+    elif dashboard_lan == dashboard_wan:
         config_error = f"WAN und LAN Interface sind identisch ({dashboard_lan}) - verschiedene Interfaces erforderlich"
         
 except Exception as e:
@@ -628,9 +628,18 @@ import sys, subprocess, os
 sys.path.append('/usr/local/bin')
 
 try:
-    from gateway_manager import GatewayManager
-    gm = GatewayManager()
-    interfaces = gm.get_actual_interfaces()
+    from gateway_manager import WireGuardGateway
+    gw = WireGuardGateway()
+    
+    # Prüfe ob get_actual_interfaces Methode existiert
+    if hasattr(gw, 'get_actual_interfaces'):
+        interfaces = gw.get_actual_interfaces()
+    else:
+        # Fallback: Lade aus Konfiguration
+        interfaces = {
+            'wan_interface': getattr(gw, 'wan_interface', None),
+            'lan_interface': getattr(gw, 'lan_interface', None)
+        }
     wan_iface = interfaces.get('wan_interface', 'eth0')
     lan_iface = interfaces.get('lan_interface', 'eth0')
     

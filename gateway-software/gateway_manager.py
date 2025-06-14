@@ -172,7 +172,7 @@ class WireGuardGateway:
             
         except Exception as e:
             print(f"Fehler bei Interface-Erkennung: {e}")
-            return ['eth0', 'eth1']  # Fallback
+            return ['eth0']  # Fallback - nur ein Interface falls Detection fehlschlägt
     
     def get_actual_interfaces(self):
         """Ermittle die tatsächlich zu verwendenden Interfaces"""
@@ -188,7 +188,7 @@ class WireGuardGateway:
         # LAN Interface bestimmen 
         if self.lan_interface == 'auto':
             # Zweites Interface ist normalerweise LAN (Server-Netzwerk)
-            lan_iface = detected[1] if len(detected) > 1 else 'eth1'
+            lan_iface = detected[1] if len(detected) > 1 else 'eth0'
         else:
             lan_iface = self.lan_interface
         
@@ -600,7 +600,7 @@ PersistentKeepalive = 25
                         continue
         except Exception:
             # Fallback: feste Liste für ältere Systeme
-            fallback_interfaces = ['eth0', 'eth1', 'wg0', 'gateway']
+            fallback_interfaces = ['eth0', 'wg0', 'gateway']
             for iface in fallback_interfaces:
                 try:
                     with open(f'/sys/class/net/{iface}/statistics/rx_bytes', 'r') as f:
