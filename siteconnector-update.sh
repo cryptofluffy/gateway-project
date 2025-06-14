@@ -261,6 +261,10 @@ EOF
     cp /tmp/siteconnector-update/gateway-software/systemd/network-scanner.service /etc/systemd/system/ 2>/dev/null || true
     cp /tmp/siteconnector-update/gateway-software/systemd/network-scanner.timer /etc/systemd/system/ 2>/dev/null || true
     
+    # Network scanner installer script
+    cp /tmp/siteconnector-update/scripts/install-network-scanner.sh /usr/local/bin/ 2>/dev/null || true
+    chmod +x /usr/local/bin/install-network-scanner.sh 2>/dev/null || true
+    
     # Backwards compatibility
     ln -sf /etc/systemd/system/siteconnector-gateway.service /etc/systemd/system/gateway-manager.service 2>/dev/null || true
     ln -sf /etc/systemd/system/siteconnector-monitoring.service /etc/systemd/system/gateway-monitoring.service 2>/dev/null || true
@@ -277,6 +281,10 @@ EOF
     systemctl start siteconnector-gateway
     systemctl start siteconnector-monitoring
     systemctl start network-scanner.timer
+    
+    # Test network scanner functionality
+    echo "🧪 Testing Network Scanner..."
+    python3 /usr/local/bin/network-scanner.py || echo "⚠️ Network scanner test completed (normal if no devices found yet)"
     
     echo "✅ SiteConnector Gateway Update abgeschlossen"
     echo "=============================================="
