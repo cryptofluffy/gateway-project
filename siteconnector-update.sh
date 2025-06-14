@@ -454,13 +454,36 @@ subnet 10.0.0.0 netmask 255.255.255.0 {
 }
 EOF
     
+    # LAN Interface aus Gateway Manager Konfiguration holen
+    if [ -f "/usr/local/bin/gateway_manager.py" ]; then
+        echo "🔍 Ermittle LAN-Interface aus Gateway Manager Konfiguration..."
+        DETECTED_LAN=$(python3 -c "
+import sys
+sys.path.append('/usr/local/bin')
+try:
+    from gateway_manager import GatewayManager
+    gm = GatewayManager()
+    interfaces = gm.get_actual_interfaces()
+    print(interfaces.get('lan_interface', 'eth1'))
+except:
+    print('eth1')
+" 2>/dev/null)
+        
+        if [ -n "$DETECTED_LAN" ] && [ "$DETECTED_LAN" != "eth1" ]; then
+            LAN_INTERFACE="$DETECTED_LAN"
+            echo "✅ LAN-Interface aus Dashboard-Konfiguration: $LAN_INTERFACE"
+        fi
+    fi
+    
     # LAN Interface als Gateway konfigurieren
     if ip link show "$LAN_INTERFACE" >/dev/null 2>&1; then
         ip addr add 10.0.0.1/24 dev "$LAN_INTERFACE" 2>/dev/null || true
         ip link set "$LAN_INTERFACE" up
         echo "✅ $LAN_INTERFACE als Gateway (10.0.0.1/24) konfiguriert"
     else
-        echo "⚠️ Interface $LAN_INTERFACE nicht gefunden - überspringe IP-Konfiguration"
+        echo "⚠️ Interface $LAN_INTERFACE nicht gefunden - verfügbare Interfaces:"
+        ip link show | grep -E "^[0-9]+:" | cut -d: -f2 | tr -d ' ' | grep -E "^(eth|enp|ens)"
+        echo "❌ Bitte LAN-Interface im Dashboard korrekt konfigurieren"
     fi
     
     # DHCP-Server starten
