@@ -22,7 +22,7 @@ if [ ! -f "/usr/local/bin/siteconnector-update" ]; then
     echo "💡 Nächstes Mal verwende: sudo siteconnector-update"
 fi
 
-# System-Typ erkennen
+# System-Typ erkennen (erweiterte Erkennung)
 if [ -f "/opt/siteconnector-vps/app.py" ] || [ -f "/opt/wireguard-vps/app.py" ]; then
     SYSTEM_TYPE="vps"
     echo "🖥️ SiteConnector VPS erkannt"
@@ -35,12 +35,24 @@ elif systemctl is-enabled wireguard-vps &>/dev/null || systemctl is-active wireg
 elif systemctl is-enabled gateway-manager &>/dev/null || systemctl is-active gateway-manager &>/dev/null; then
     SYSTEM_TYPE="gateway" 
     echo "🌐 Legacy Gateway Installation erkannt"
+elif systemctl is-enabled siteconnector-gateway &>/dev/null || systemctl is-active siteconnector-gateway &>/dev/null; then
+    SYSTEM_TYPE="gateway" 
+    echo "🌐 SiteConnector Gateway Service erkannt"
+elif [ -f "/etc/wireguard/gateway.conf" ] || [ -f "/etc/wireguard-gateway/config.json" ]; then
+    SYSTEM_TYPE="gateway"
+    echo "🌐 Gateway anhand WireGuard-Config erkannt"
 else
-    echo "❌ SiteConnector System nicht erkannt"
-    echo "💡 Installiere zuerst SiteConnector:"
-    echo "   VPS: curl -s https://raw.githubusercontent.com/cryptofluffy/gateway-project/main/vps-server/install.sh | sudo bash"
-    echo "   Gateway: curl -s https://raw.githubusercontent.com/cryptofluffy/gateway-project/main/gateway-software/install.sh | sudo bash"
-    exit 1
+    # Fallback: Prüfe ob WireGuard installiert ist (wahrscheinlich Gateway)
+    if which wg &>/dev/null && ! [ -d "/opt/wireguard-vps" ] && ! [ -d "/opt/siteconnector-vps" ]; then
+        SYSTEM_TYPE="gateway"
+        echo "🌐 Gateway anhand WireGuard-Installation erkannt (Fallback)"
+    else
+        echo "❌ SiteConnector System nicht erkannt"
+        echo "💡 Installiere zuerst SiteConnector:"
+        echo "   VPS: curl -s https://raw.githubusercontent.com/cryptofluffy/gateway-project/main/vps-server/install.sh | sudo bash"
+        echo "   Gateway: curl -s https://raw.githubusercontent.com/cryptofluffy/gateway-project/main/gateway-software/install.sh | sudo bash"
+        exit 1
+    fi
 fi
 
 # Backup erstellen
