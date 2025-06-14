@@ -199,9 +199,23 @@ elif [ "$SYSTEM_TYPE" = "gateway" ]; then
     
     # Gateway Code aktualisieren
     echo "📁 Gateway-Software aktualisieren..."
+    
+    # Network Scanner zuerst - KRITISCH für Geräteerkennung
+    echo "📡 Network Scanner installieren..."
+    if [ -f "/tmp/siteconnector-update/gateway-software/network-scanner.py" ]; then
+        cp /tmp/siteconnector-update/gateway-software/network-scanner.py /usr/local/bin/
+        chmod +x /usr/local/bin/network-scanner.py
+        echo "✅ network-scanner.py installiert"
+    else
+        echo "⚠️ Datei nicht gefunden, lade von GitHub..."
+        wget -q https://raw.githubusercontent.com/cryptofluffy/gateway-project/main/gateway-software/network-scanner.py -O /usr/local/bin/network-scanner.py
+        chmod +x /usr/local/bin/network-scanner.py
+        echo "✅ network-scanner.py von GitHub installiert"
+    fi
+    
+    # Andere Gateway-Dateien
     cp /tmp/siteconnector-update/gateway-software/gateway_manager.py /usr/local/bin/ 2>/dev/null || true
     cp /tmp/siteconnector-update/gateway-software/system_monitor.py /usr/local/bin/ 2>/dev/null || true
-    cp /tmp/siteconnector-update/gateway-software/network-scanner.py /usr/local/bin/ 2>/dev/null || true
     cp /tmp/siteconnector-update/gateway-software/gui_app.py /usr/local/bin/ 2>/dev/null || true
     
     # SiteConnector-Befehle erstellen
@@ -270,14 +284,44 @@ EOF
         cp /tmp/siteconnector-update/gateway-software/systemd/network-scanner.service /etc/systemd/system/
         echo "✅ network-scanner.service installiert"
     else
-        echo "⚠️ network-scanner.service nicht gefunden"
+        echo "⚠️ Service-Datei nicht gefunden, erstelle manuell..."
+        cat > /etc/systemd/system/network-scanner.service << 'EOF'
+[Unit]
+Description=Network Scanner for Gateway Devices
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/network-scanner.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        echo "✅ network-scanner.service manuell erstellt"
     fi
     
     if [ -f "/tmp/siteconnector-update/gateway-software/systemd/network-scanner.timer" ]; then
         cp /tmp/siteconnector-update/gateway-software/systemd/network-scanner.timer /etc/systemd/system/
         echo "✅ network-scanner.timer installiert"
     else
-        echo "⚠️ network-scanner.timer nicht gefunden"
+        echo "⚠️ Timer-Datei nicht gefunden, erstelle manuell..."
+        cat > /etc/systemd/system/network-scanner.timer << 'EOF'
+[Unit]
+Description=Run Network Scanner every 5 minutes
+Requires=network-scanner.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=network-scanner.service
+
+[Install]
+WantedBy=timers.target
+EOF
+        echo "✅ network-scanner.timer manuell erstellt"
     fi
     
     # Network scanner installer script
