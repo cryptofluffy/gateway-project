@@ -67,8 +67,12 @@ class NetworkScanner:
         return devices
     
     def _get_local_networks(self) -> List[str]:
-        """Ermittle lokale Netzwerk-Bereiche"""
+        """Ermittle lokale Netzwerk-Bereiche - NUR Server-Netzwerk scannen"""
         networks = []
+        
+        # Nur das Server-Netzwerk scannen (Port B / eth1)
+        # NICHT das Heimnetz (Port A / eth0) - das ist die FritzBox
+        server_networks = ['10.0.0.0/24']
         
         try:
             # ip route show für lokale Netzwerke
@@ -77,25 +81,31 @@ class NetworkScanner:
             
             if result.returncode == 0:
                 for line in result.stdout.split('\n'):
-                    # Suche nach lokalen Netzwerken
-                    if 'dev' in line and 'scope link' in line:
+                    # Suche nach Server-Netzwerk (10.0.0.0/24) über eth1
+                    if 'dev eth1' in line and 'scope link' in line:
                         parts = line.split()
                         if len(parts) > 0 and '/' in parts[0]:
                             network = parts[0]
-                            # Erweiterte private Netzwerke für Server-Bereiche
-                            if any(network.startswith(prefix) for prefix in 
-                                  ['192.168.', '10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.',
-                                   '172.21.', '172.22.', '172.23.', '172.24.', '172.25.', '172.26.',
-                                   '172.27.', '172.28.', '172.29.', '172.30.', '172.31.']):
+                            # Nur Server-Netzwerke (10.x.x.x)
+                            if network.startswith('10.'):
                                 networks.append(network)
+                                logger.info(f"Found server network: {network}")
         except Exception as e:
             logger.error(f"Error getting local networks: {e}")
         
-        # Fallback zu häufigen Netzwerken inkl. typischer Server-Bereiche
+        # Fallback: Nur Server-Netzwerk
         if not networks:
-            networks = ['192.168.1.0/24', '192.168.178.0/24', '10.0.0.0/24', '10.0.1.0/24', '172.16.0.0/24']
+            networks = server_networks
+            logger.info(f"Using fallback server networks: {networks}")
         
-        return networks
+        # Explizit KEINE Heimnetz-Bereiche (192.168.x.x)
+        # Das Gateway scannt NUR das Server-Netzwerk (Port B)
+        filtered_networks = []
+        for network in networks:
+            if network.startswith('10.0.0.'):
+                filtered_networks.append(network)
+        
+        return filtered_networks if filtered_networks else server_networks
     
     def _scan_network_range(self, network: str) -> List[Dict]:
         """Scanne einen Netzwerk-Bereich"""
