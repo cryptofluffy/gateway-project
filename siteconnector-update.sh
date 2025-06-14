@@ -377,6 +377,53 @@ EOF
         echo "❌ Network Scanner Timer nicht installiert - kann nicht gestartet werden"
     fi
     
+    # DHCP-Server für Server-Netzwerk (Port B) einrichten
+    echo "🌐 DHCP-Server für Server-Netzwerk konfigurieren..."
+    
+    # DHCP-Server installieren
+    apt install -y isc-dhcp-server
+    
+    # Interface für DHCP konfigurieren
+    cat > /etc/default/isc-dhcp-server << 'EOF'
+# Interface für DHCP-Server (Port B / Server-Netz)
+INTERFACESv4="eth1"
+INTERFACESv6=""
+EOF
+    
+    # DHCP-Konfiguration für Server-Netzwerk
+    cat > /etc/dhcp/dhcpd.conf << 'EOF'
+# DHCP-Konfiguration für Server-Netzwerk (Port B)
+default-lease-time 3600;
+max-lease-time 7200;
+authoritative;
+
+# Server-Netzwerk (Port B / eth1) - Internet über VPN
+subnet 10.0.0.0 netmask 255.255.255.0 {
+    range 10.0.0.100 10.0.0.200;
+    option routers 10.0.0.1;
+    option domain-name-servers 8.8.8.8, 8.8.4.4;
+    option domain-name "server.local";
+    default-lease-time 3600;
+    max-lease-time 7200;
+}
+EOF
+    
+    # eth1 Interface als Gateway konfigurieren
+    ip addr add 10.0.0.1/24 dev eth1 2>/dev/null || true
+    ip link set eth1 up
+    echo "✅ eth1 als Gateway (10.0.0.1/24) konfiguriert"
+    
+    # DHCP-Server starten
+    systemctl enable isc-dhcp-server
+    systemctl start isc-dhcp-server
+    
+    if systemctl is-active --quiet isc-dhcp-server; then
+        echo "✅ DHCP-Server läuft - Server bekommen automatisch IPs (10.0.0.100-200)"
+    else
+        echo "⚠️ DHCP-Server Probleme:"
+        systemctl status isc-dhcp-server --no-pager
+    fi
+    
     # Test network scanner functionality
     echo "🧪 Testing Network Scanner..."
     if [ -f "/usr/local/bin/network-scanner.py" ]; then
@@ -389,12 +436,27 @@ EOF
     
     echo "✅ SiteConnector Gateway Update abgeschlossen"
     echo "=============================================="
-    echo "Verfügbare Befehle:"
+    echo "🖥️ Gateway-PC Konfiguration:"
+    echo "   Port A (eth0): Heimnetz-Client (DHCP von FritzBox)"
+    echo "   Port B (eth1): Server-Gateway (10.0.0.1/24)"
+    echo ""
+    echo "🌐 Server-Netzwerk:"
+    echo "   DHCP-Bereich: 10.0.0.100 - 10.0.0.200"
+    echo "   Gateway: 10.0.0.1"
+    echo "   DNS: 8.8.8.8, 8.8.4.4"
+    echo "   Internet: Über VPN-Tunnel"
+    echo ""
+    echo "📋 Verfügbare Befehle:"
     echo "- siteconnector-gateway status   # System-Status prüfen"
     echo "- siteconnector-gateway setup    # Gateway konfigurieren"
     echo "- siteconnector-gateway start    # Tunnel starten"
     echo "- siteconnector-gateway stop     # Tunnel stoppen"
     echo "- python3 /usr/local/bin/gui_app.py  # GUI öffnen"
+    echo ""
+    echo "🔍 Server-Erkennung:"
+    echo "   Network Scanner läuft alle 5 Minuten"
+    echo "   Server erscheinen automatisch im Dashboard"
+    echo "   Dashboard: http://$(curl -s ifconfig.me 2>/dev/null || echo 'VPS-IP'):8080/dashboard"
 fi
 
 # Cleanup
