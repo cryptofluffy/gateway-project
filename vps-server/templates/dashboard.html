@@ -69,6 +69,21 @@
             </div>
         </div>
     </div>
+
+    <!-- Erkannte Server-Geräte -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-700">Server-Geräte</h3>
+                <p id="device-count" class="text-2xl font-bold text-orange-600">{{ devices.gateway_devices + devices.vps_devices if devices else 0 }}</p>
+            </div>
+            <div class="text-orange-500">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"></path>
+                </svg>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Language Toggle -->
@@ -99,9 +114,23 @@
     {% endif %}
 </div>
 
+<!-- Erkannte Server-Geräte -->
+<div class="bg-white rounded-lg shadow-md p-6 mb-6">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-gray-800">🖥️ Erkannte Server-Geräte</h2>
+        <button onclick="refreshDevices()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors">
+            🔄 Aktualisieren
+        </button>
+    </div>
+    
+    <div id="devices-container">
+        <!-- Geräte werden hier dynamisch geladen -->
+    </div>
+</div>
+
 <!-- Verbundene Clients -->
 <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-800 mb-4" data-i18n="dashboard.connected_clients">Verbundene Clients</h2>
+    <h2 class="text-xl font-bold text-gray-800 mb-4" data-i18n="dashboard.connected_clients">Verbundene Gateway-Clients</h2>
     
     {% if clients %}
     <div class="overflow-x-auto">
@@ -292,28 +321,68 @@
 <!-- Port-Weiterleitungen Übersicht -->
 <div class="bg-white rounded-lg shadow-md p-6">
     <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-bold text-gray-800">Aktive Port-Weiterleitungen</h2>
+        <h2 class="text-xl font-bold text-gray-800">🔗 Port-Weiterleitungen</h2>
         <a href="/port-forwards" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors">
-            Verwalten
+            Alle verwalten
         </a>
     </div>
     
-    {% if port_forwards %}
-    <div class="space-y-2">
-        {% for rule_id, rule in port_forwards.items() %}
-        <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+    <!-- Schnell-Weiterleitung für Geräte -->
+    <div class="bg-blue-50 rounded-lg p-4 mb-4">
+        <h3 class="font-medium text-blue-800 mb-3">⚡ Schnell-Weiterleitung erstellen</h3>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div>
-                <span class="font-medium">Port {{ rule.external_port }}/{{ rule.protocol }}</span>
-                <span class="text-gray-500 mx-2">→</span>
-                <span class="text-blue-600">{{ rule.internal_ip }}:{{ rule.internal_port }}</span>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Gerät</label>
+                <select id="quick-device" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                    <option value="">Gerät wählen...</option>
+                </select>
             </div>
-            <span class="text-xs text-gray-500">{{ rule.created[:19] }}</span>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Ext. Port</label>
+                <input type="number" id="quick-ext-port" placeholder="8080" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Int. Port</label>
+                <input type="number" id="quick-int-port" placeholder="80" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Protokoll</label>
+                <select id="quick-protocol" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                    <option value="tcp">TCP</option>
+                    <option value="udp">UDP</option>
+                </select>
+            </div>
+            <div class="flex items-end">
+                <button onclick="createQuickPortForward()" class="w-full bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-md text-sm transition-colors">
+                    ➕ Erstellen
+                </button>
+            </div>
         </div>
-        {% endfor %}
     </div>
-    {% else %}
-    <p class="text-gray-500 italic">Keine Port-Weiterleitungen konfiguriert</p>
-    {% endif %}
+    
+    <div id="port-forwards-container">
+        {% if port_forwards %}
+        <div class="space-y-2">
+            {% for rule_id, rule in port_forwards.items() %}
+            <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <div class="flex items-center space-x-3">
+                    <span class="font-medium">Port {{ rule.external_port }}/{{ rule.protocol|upper }}</span>
+                    <span class="text-gray-500">→</span>
+                    <span class="text-blue-600">{{ rule.internal_ip }}:{{ rule.internal_port }}</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-xs text-gray-500">{{ rule.created[:19] }}</span>
+                    <button onclick="deletePortForward('{{ rule_id }}')" class="text-red-500 hover:text-red-700 text-sm">
+                        🗑️
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-gray-500 italic">Keine Port-Weiterleitungen konfiguriert</p>
+        {% endif %}
+    </div>
 </div>
 
 <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
