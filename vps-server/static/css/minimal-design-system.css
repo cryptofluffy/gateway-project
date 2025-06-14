@@ -7,20 +7,20 @@
    ROOT VARIABLES
    ================= */
 :root {
-    /* Colors */
-    --primary-bg: #0a0a0a;
-    --secondary-bg: #1a1a1a;
-    --surface-bg: #252525;
-    --surface-hover: #2d2d2d;
-    --accent-primary: #00ff88;
-    --accent-secondary: #0088ff;
-    --accent-warning: #ff8800;
-    --accent-danger: #ff4444;
-    --text-primary: #ffffff;
-    --text-secondary: #cccccc;
-    --text-muted: #888888;
-    --border-color: #333333;
-    --border-focus: #00ff88;
+    /* Colors - Light Theme */
+    --primary-bg: #ffffff;
+    --secondary-bg: #f8f9fa;
+    --surface-bg: #ffffff;
+    --surface-hover: #f8f9fa;
+    --accent-primary: #0066cc;
+    --accent-secondary: #28a745;
+    --accent-warning: #ffc107;
+    --accent-danger: #dc3545;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --text-muted: #adb5bd;
+    --border-color: #dee2e6;
+    --border-focus: #0066cc;
     
     /* Spacing */
     --space-xs: 0.25rem;
@@ -48,10 +48,10 @@
     --radius-full: 9999px;
     
     /* Shadows */
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-    --shadow-glow: 0 0 20px rgba(0, 255, 136, 0.2);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
+    --shadow-glow: 0 0 20px rgba(0, 102, 204, 0.15);
     
     /* Transitions */
     --transition-fast: 0.15s ease;
@@ -97,7 +97,7 @@ body {
     left: 0;
     right: 0;
     height: 64px;
-    background: rgba(26, 26, 26, 0.95);
+    background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border-color);
     z-index: 1000;
@@ -105,6 +105,7 @@ body {
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--space-lg);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .main-content {
