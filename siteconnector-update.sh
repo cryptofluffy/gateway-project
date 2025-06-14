@@ -83,6 +83,17 @@ echo "📥 Lade neueste SiteConnector Version..."
 rm -rf /tmp/siteconnector-update
 git clone https://github.com/cryptofluffy/gateway-project.git /tmp/siteconnector-update
 
+# Update-Script selbst aktualisieren falls neue Version verfügbar
+if [ -f "/tmp/siteconnector-update/siteconnector-update.sh" ]; then
+    if ! cmp -s "$0" "/tmp/siteconnector-update/siteconnector-update.sh"; then
+        echo "🔄 Update-Script aktualisieren..."
+        cp /tmp/siteconnector-update/siteconnector-update.sh /usr/local/bin/siteconnector-update
+        chmod +x /usr/local/bin/siteconnector-update
+        echo "✅ Update-Script aktualisiert - starte neu..."
+        exec /usr/local/bin/siteconnector-update
+    fi
+fi
+
 if [ "$SYSTEM_TYPE" = "vps" ]; then
     echo "🔄 SiteConnector VPS aktualisieren..."
     
@@ -225,7 +236,7 @@ elif [ "$SYSTEM_TYPE" = "gateway" ]; then
         echo "✅ network-scanner.py von GitHub installiert"
     fi
     
-    # Andere Gateway-Dateien
+    # Andere Gateway-Dateien (mit korrigierten Interfaces)
     cp /tmp/siteconnector-update/gateway-software/gateway_manager.py /usr/local/bin/ 2>/dev/null || true
     cp /tmp/siteconnector-update/gateway-software/system_monitor.py /usr/local/bin/ 2>/dev/null || true
     cp /tmp/siteconnector-update/gateway-software/gui_app.py /usr/local/bin/ 2>/dev/null || true
