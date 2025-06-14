@@ -199,9 +199,9 @@ elif [ "$SYSTEM_TYPE" = "gateway" ]; then
     
     # Gateway Code aktualisieren
     echo "📁 Gateway-Software aktualisieren..."
-    cp /tmp/siteconnector-update/gateway-software/gateway_manager.py /usr/local/bin/
-    cp /tmp/siteconnector-update/gateway-software/system_monitor.py /usr/local/bin/
-    cp /tmp/siteconnector-update/gateway-software/network-scanner.py /usr/local/bin/
+    cp /tmp/siteconnector-update/gateway-software/gateway_manager.py /usr/local/bin/ 2>/dev/null || true
+    cp /tmp/siteconnector-update/gateway-software/system_monitor.py /usr/local/bin/ 2>/dev/null || true
+    cp /tmp/siteconnector-update/gateway-software/network-scanner.py /usr/local/bin/ 2>/dev/null || true
     cp /tmp/siteconnector-update/gateway-software/gui_app.py /usr/local/bin/ 2>/dev/null || true
     
     # SiteConnector-Befehle erstellen
@@ -212,11 +212,18 @@ exec /usr/local/bin/gateway_manager.py "$@"
 EOF
     
     # Berechtigungen setzen
-    chmod +x /usr/local/bin/gateway_manager.py
-    chmod +x /usr/local/bin/system_monitor.py
-    chmod +x /usr/local/bin/network-scanner.py
+    chmod +x /usr/local/bin/gateway_manager.py 2>/dev/null || true
+    chmod +x /usr/local/bin/system_monitor.py 2>/dev/null || true
+    chmod +x /usr/local/bin/network-scanner.py 2>/dev/null || true
     chmod +x /usr/local/bin/gui_app.py 2>/dev/null || true
-    chmod +x /usr/local/bin/siteconnector-gateway
+    chmod +x /usr/local/bin/siteconnector-gateway 2>/dev/null || true
+    
+    # Prüfe ob Network Scanner installiert wurde
+    if [ -f "/usr/local/bin/network-scanner.py" ]; then
+        echo "✅ network-scanner.py erfolgreich installiert"
+    else
+        echo "❌ network-scanner.py FEHLT - Geräteerkennung wird nicht funktionieren!"
+    fi
     
     # Systemd-Services aktualisieren
     echo "📋 SiteConnector Gateway Services konfigurieren..."
@@ -257,13 +264,30 @@ RestartSec=30
 WantedBy=multi-user.target
 EOF
     
-    # Network scanner service and timer
-    cp /tmp/siteconnector-update/gateway-software/systemd/network-scanner.service /etc/systemd/system/ 2>/dev/null || true
-    cp /tmp/siteconnector-update/gateway-software/systemd/network-scanner.timer /etc/systemd/system/ 2>/dev/null || true
+    # Network scanner service and timer - KRITISCH für Geräteerkennung
+    echo "📡 Network Scanner Services installieren..."
+    if [ -f "/tmp/siteconnector-update/gateway-software/systemd/network-scanner.service" ]; then
+        cp /tmp/siteconnector-update/gateway-software/systemd/network-scanner.service /etc/systemd/system/
+        echo "✅ network-scanner.service installiert"
+    else
+        echo "⚠️ network-scanner.service nicht gefunden"
+    fi
+    
+    if [ -f "/tmp/siteconnector-update/gateway-software/systemd/network-scanner.timer" ]; then
+        cp /tmp/siteconnector-update/gateway-software/systemd/network-scanner.timer /etc/systemd/system/
+        echo "✅ network-scanner.timer installiert"
+    else
+        echo "⚠️ network-scanner.timer nicht gefunden"
+    fi
     
     # Network scanner installer script
-    cp /tmp/siteconnector-update/scripts/install-network-scanner.sh /usr/local/bin/ 2>/dev/null || true
-    chmod +x /usr/local/bin/install-network-scanner.sh 2>/dev/null || true
+    if [ -f "/tmp/siteconnector-update/scripts/install-network-scanner.sh" ]; then
+        cp /tmp/siteconnector-update/scripts/install-network-scanner.sh /usr/local/bin/
+        chmod +x /usr/local/bin/install-network-scanner.sh
+        echo "✅ install-network-scanner.sh installiert"
+    else
+        echo "⚠️ install-network-scanner.sh nicht gefunden"
+    fi
     
     # Backwards compatibility
     ln -sf /etc/systemd/system/siteconnector-gateway.service /etc/systemd/system/gateway-manager.service 2>/dev/null || true
@@ -275,16 +299,37 @@ EOF
     
     # Services aktivieren und starten
     systemctl daemon-reload
-    systemctl enable siteconnector-gateway
-    systemctl enable siteconnector-monitoring
-    systemctl enable network-scanner.timer
-    systemctl start siteconnector-gateway
-    systemctl start siteconnector-monitoring
-    systemctl start network-scanner.timer
+    systemctl enable siteconnector-gateway 2>/dev/null || true
+    systemctl enable siteconnector-monitoring 2>/dev/null || true
+    systemctl start siteconnector-gateway 2>/dev/null || true
+    systemctl start siteconnector-monitoring 2>/dev/null || true
+    
+    # Network Scanner Service - KRITISCH
+    if [ -f "/etc/systemd/system/network-scanner.timer" ]; then
+        systemctl enable network-scanner.timer
+        systemctl start network-scanner.timer
+        echo "✅ Network Scanner Timer gestartet"
+        
+        # Status prüfen
+        if systemctl is-active --quiet network-scanner.timer; then
+            echo "✅ Network Scanner läuft korrekt"
+        else
+            echo "❌ Network Scanner konnte nicht gestartet werden"
+            systemctl status network-scanner.timer --no-pager
+        fi
+    else
+        echo "❌ Network Scanner Timer nicht installiert - kann nicht gestartet werden"
+    fi
     
     # Test network scanner functionality
     echo "🧪 Testing Network Scanner..."
-    python3 /usr/local/bin/network-scanner.py || echo "⚠️ Network scanner test completed (normal if no devices found yet)"
+    if [ -f "/usr/local/bin/network-scanner.py" ]; then
+        python3 /usr/local/bin/network-scanner.py || echo "⚠️ Network scanner test completed (normal if no devices found yet)"
+    else
+        echo "❌ Network Scanner Script fehlt - kann nicht getestet werden"
+        echo "📁 Verfügbare Dateien in /tmp/siteconnector-update/gateway-software/:"
+        ls -la /tmp/siteconnector-update/gateway-software/ 2>/dev/null || echo "Verzeichnis nicht gefunden"
+    fi
     
     echo "✅ SiteConnector Gateway Update abgeschlossen"
     echo "=============================================="
