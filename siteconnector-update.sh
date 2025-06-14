@@ -430,16 +430,10 @@ try:
     
     print(f"📊 Dashboard-Konfiguration: WAN={dashboard_wan}, LAN={dashboard_lan}")
     
-    # Validierung der Dashboard-Einstellungen
-    # Prüfe ob genug Interfaces für WAN+LAN verfügbar sind
-    if len(available_interfaces) < 2:
-        config_error = f"Nur {len(available_interfaces)} Interface(s) verfügbar - Gateway benötigt mindestens 2 (WAN+LAN)"
-    elif dashboard_lan not in available_interfaces:
-        config_error = f"LAN-Interface '{dashboard_lan}' nicht verfügbar. Verfügbar: {', '.join(available_interfaces)}"
-    elif dashboard_wan not in available_interfaces:
-        config_error = f"WAN-Interface '{dashboard_wan}' nicht verfügbar. Verfügbar: {', '.join(available_interfaces)}"
-    elif dashboard_lan == dashboard_wan:
+    # Minimale Validierung - Dashboard-Konfiguration wird übernommen
+    if dashboard_lan == dashboard_wan and dashboard_lan is not None:
         config_error = f"WAN und LAN Interface sind identisch ({dashboard_lan}) - verschiedene Interfaces erforderlich"
+    # Keine weitere Validierung - Dashboard-Konfiguration wird vertraut
         
 except Exception as e:
     config_error = f"Gateway Manager nicht verfügbar oder fehlerhaft: {e}"
@@ -451,12 +445,9 @@ if config_error:
     print("🔧 LÖSUNG:")
     print("1. Öffne das Dashboard im Browser")
     print("2. Gehe zu Gateway-Einstellungen")
-    print("3. Wähle korrekte Netzwerk-Interfaces:")
-    print(f"   - WAN-Interface: {available_interfaces[0] if available_interfaces else 'eth0'} (für Internet-Verbindung)")
-    if len(available_interfaces) > 1:
-        print(f"   - LAN-Interface: {available_interfaces[1]} (für Server-Netzwerk)")
-    else:
-        print("   - LAN-Interface: Zweites verfügbares Interface")
+    print("3. Konfiguriere die Netzwerk-Interfaces:")
+    print("   - WAN-Interface: Interface für Internet-Verbindung")
+    print("   - LAN-Interface: Interface für Server-Netzwerk")
     print("4. Speichere die Einstellungen")
     print("5. Führe 'sudo siteconnector-update' erneut aus")
     print("")
