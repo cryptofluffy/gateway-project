@@ -409,10 +409,10 @@ except Exception as e:
                 if iface not in ['lo'] and not iface.startswith('wg'):
                     interfaces.append(iface)
         # Zweites Interface ist normalerweise LAN
-        lan_iface = interfaces[1] if len(interfaces) > 1 else 'eth1'
+        lan_iface = interfaces[1] if len(interfaces) > 1 else 'eth0'
         print(lan_iface)
     except:
-        print('eth1')  # Absolute Fallback
+        print('eth0')  # Absolute Fallback
 EOF
         
         chmod +x /tmp/detect_lan_interface.py
@@ -423,36 +423,11 @@ EOF
         # Fallback: Interface-Auto-Detection
         LAN_INTERFACE=$(ip link show | grep -E '^[0-9]+: (eth|en)' | head -2 | tail -1 | cut -d: -f2 | tr -d ' ')
         if [ -z "$LAN_INTERFACE" ]; then
-            LAN_INTERFACE="eth1"  # Absolute Fallback
+            LAN_INTERFACE="eth0"  # Absolute Fallback
         fi
     fi
     
     echo "🖧 Verwende LAN-Interface für Server-Netzwerk: $LAN_INTERFACE"
-    
-    # Interface für DHCP konfigurieren
-    cat > /etc/default/isc-dhcp-server << EOF
-# Interface für DHCP-Server (Server-Netzwerk)
-INTERFACESv4="$LAN_INTERFACE"
-INTERFACESv6=""
-EOF
-    
-    # DHCP-Konfiguration für Server-Netzwerk
-    cat > /etc/dhcp/dhcpd.conf << EOF
-# DHCP-Konfiguration für Server-Netzwerk ($LAN_INTERFACE)
-default-lease-time 3600;
-max-lease-time 7200;
-authoritative;
-
-# Server-Netzwerk ($LAN_INTERFACE) - Internet über VPN
-subnet 10.0.0.0 netmask 255.255.255.0 {
-    range 10.0.0.100 10.0.0.200;
-    option routers 10.0.0.1;
-    option domain-name-servers 8.8.8.8, 8.8.4.4;
-    option domain-name "server.local";
-    default-lease-time 3600;
-    max-lease-time 7200;
-}
-EOF
     
     # LAN Interface aus Gateway Manager Konfiguration holen
     if [ -f "/usr/local/bin/gateway_manager.py" ]; then
@@ -464,34 +439,126 @@ try:
     from gateway_manager import GatewayManager
     gm = GatewayManager()
     interfaces = gm.get_actual_interfaces()
-    print(interfaces.get('lan_interface', 'eth1'))
+    print(interfaces.get('lan_interface', 'eth0'))
 except:
-    print('eth1')
+    print('eth0')
 " 2>/dev/null)
         
-        if [ -n "$DETECTED_LAN" ] && [ "$DETECTED_LAN" != "eth1" ]; then
+        if [ -n "$DETECTED_LAN" ] && [ "$DETECTED_LAN" != "eth0" ]; then
             LAN_INTERFACE="$DETECTED_LAN"
             echo "✅ LAN-Interface aus Dashboard-Konfiguration: $LAN_INTERFACE"
         fi
     fi
     
-    # LAN Interface als Gateway konfigurieren
-    if ip link show "$LAN_INTERFACE" >/dev/null 2>&1; then
-        ip addr add 10.0.0.1/24 dev "$LAN_INTERFACE" 2>/dev/null || true
-        ip link set "$LAN_INTERFACE" up
-        echo "✅ $LAN_INTERFACE als Gateway (10.0.0.1/24) konfiguriert"
+    # Gateway Manager Interface-Erkennung für korrektes LAN-Interface
+    echo "🔍 Ermittle korrektes LAN-Interface aus Gateway Manager..."
+    
+    # Python-Script für Interface-Erkennung
+    python3 << 'INTERFACE_DETECT_EOF'
+import sys
+sys.path.append('/usr/local/bin')
+
+try:
+    from gateway_manager import GatewayManager
+    gm = GatewayManager()
+    interfaces = gm.get_actual_interfaces()
+    lan_interface = interfaces.get('lan_interface', 'eth0')
+    wan_interface = interfaces.get('wan_interface', 'eth0')
+    print(f"✅ Gateway Manager: WAN={wan_interface}, LAN={lan_interface}")
+except Exception as e:
+    print(f"⚠️ Gateway Manager Fehler: {e}")
+    # Fallback: Automatische Erkennung
+    import subprocess
+    try:
+        result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True)
+        interfaces = []
+        for line in result.stdout.split('\n'):
+            if ':' in line and ('eth' in line or 'enp' in line or 'ens' in line):
+                parts = line.split(':')
+                if len(parts) >= 2:
+                    iface = parts[1].strip().split('@')[0]
+                    if 'docker' not in iface and 'br-' not in iface:
+                        interfaces.append(iface)
+        
+        # WAN = Interface mit Default-Route  
+        try:
+            route_result = subprocess.run(['ip', 'route', 'show', 'default'], capture_output=True, text=True)
+            wan_interface = route_result.stdout.split()[4] if route_result.stdout else interfaces[0]
+        except:
+            wan_interface = interfaces[0] if interfaces else 'eth0'
+        
+        # LAN = Anderes verfügbares Interface
+        lan_interface = next((iface for iface in interfaces if iface != wan_interface), interfaces[0] if interfaces else 'eth0')
+        print(f"✅ Fallback: WAN={wan_interface}, LAN={lan_interface}")
+    except Exception as e2:
+        print(f"❌ Fallback fehlgeschlagen: {e2}")
+        wan_interface = 'eth0'
+        lan_interface = 'eth0'
+
+# Gateway-IP für LAN-Interface setzen (192.168.100.x Netzwerk)
+import subprocess
+try:
+    # Interface für Gateway-Netzwerk konfigurieren
+    subprocess.run(['ip', 'addr', 'flush', 'dev', lan_interface], capture_output=True)
+    subprocess.run(['ip', 'addr', 'add', '192.168.100.1/24', 'dev', lan_interface], capture_output=True)
+    subprocess.run(['ip', 'link', 'set', lan_interface, 'up'], capture_output=True)
+    print(f"✅ Interface {lan_interface} konfiguriert: 192.168.100.1/24")
+    
+    # Interface-Namen für weitere Verwendung speichern
+    with open('/tmp/gateway_interfaces.txt', 'w') as f:
+        f.write(f"WAN_INTERFACE={wan_interface}\n")
+        f.write(f"LAN_INTERFACE={lan_interface}\n")
+        
+except Exception as e:
+    print(f"❌ Interface-Konfiguration Fehler: {e}")
+    with open('/tmp/gateway_interfaces.txt', 'w') as f:
+        f.write(f"WAN_INTERFACE=eth0\n")
+        f.write(f"LAN_INTERFACE=eth0\n")
+INTERFACE_DETECT_EOF
+
+    # Interface-Namen aus temporärer Datei laden
+    if [ -f "/tmp/gateway_interfaces.txt" ]; then
+        source /tmp/gateway_interfaces.txt
+        echo "🎯 Verwende Interfaces: WAN=$WAN_INTERFACE, LAN=$LAN_INTERFACE"
+        rm -f /tmp/gateway_interfaces.txt
     else
-        echo "⚠️ Interface $LAN_INTERFACE nicht gefunden - verfügbare Interfaces:"
-        ip link show | grep -E "^[0-9]+:" | cut -d: -f2 | tr -d ' ' | grep -E "^(eth|enp|ens)"
-        echo "❌ Bitte LAN-Interface im Dashboard korrekt konfigurieren"
+        LAN_INTERFACE="eth0"  # Fallback
+        echo "⚠️ Fallback zu eth0"
     fi
+    
+    # DHCP-Konfiguration mit erkanntem Interface erstellen
+    echo "🔧 Konfiguriere DHCP-Server für Interface $LAN_INTERFACE..."
+    
+    # Interface für DHCP konfigurieren
+    cat > /etc/default/isc-dhcp-server << EOF
+# Interface für DHCP-Server (Gateway-Netzwerk)
+INTERFACESv4="$LAN_INTERFACE"
+INTERFACESv6=""
+EOF
+    
+    # DHCP-Konfiguration für Gateway-Netzwerk (192.168.100.x)
+    cat > /etc/dhcp/dhcpd.conf << EOF
+# DHCP-Konfiguration für Gateway-Netzwerk ($LAN_INTERFACE)
+default-lease-time 86400;
+max-lease-time 172800;
+authoritative;
+
+# Gateway-Netzwerk ($LAN_INTERFACE) - 192.168.100.x
+subnet 192.168.100.0 netmask 255.255.255.0 {
+    range 192.168.100.50 192.168.100.200;
+    option routers 192.168.100.1;
+    option domain-name-servers 192.168.100.1, 8.8.8.8, 8.8.4.4;
+    option domain-name "gateway.local";
+    option broadcast-address 192.168.100.255;
+}
+EOF
     
     # DHCP-Server starten
     systemctl enable isc-dhcp-server
     systemctl start isc-dhcp-server
     
     if systemctl is-active --quiet isc-dhcp-server; then
-        echo "✅ DHCP-Server läuft auf $LAN_INTERFACE - Server bekommen automatisch IPs (10.0.0.100-200)"
+        echo "✅ DHCP-Server läuft auf $LAN_INTERFACE - Server bekommen automatisch IPs (192.168.100.50-200)"
     else
         echo "⚠️ DHCP-Server Probleme:"
         systemctl status isc-dhcp-server --no-pager
@@ -514,13 +581,13 @@ except:
     echo "=============================================="
     echo "🖥️ Gateway-PC Konfiguration:"
     echo "   WAN-Interface: Heimnetz-Client (DHCP von FritzBox/Router)"
-    echo "   LAN-Interface ($LAN_INTERFACE): Server-Gateway (10.0.0.1/24)"
+    echo "   LAN-Interface ($LAN_INTERFACE): Server-Gateway (192.168.100.1/24)"
     echo ""
-    echo "🌐 Server-Netzwerk:"
+    echo "🌐 Gateway-Netzwerk:"
     echo "   Interface: $LAN_INTERFACE"
-    echo "   DHCP-Bereich: 10.0.0.100 - 10.0.0.200"
-    echo "   Gateway: 10.0.0.1"
-    echo "   DNS: 8.8.8.8, 8.8.4.4"
+    echo "   DHCP-Bereich: 192.168.100.50 - 192.168.100.200"
+    echo "   Gateway: 192.168.100.1"
+    echo "   DNS: 192.168.100.1, 8.8.8.8, 8.8.4.4"
     echo "   Internet: Über VPN-Tunnel"
     echo ""
     echo "📋 Verfügbare Befehle:"
@@ -584,7 +651,7 @@ try:
     gm = GatewayManager()
     interfaces = gm.get_actual_interfaces()
     wan_iface = interfaces.get('wan_interface', 'eth0')
-    lan_iface = interfaces.get('lan_interface', 'eth1')
+    lan_iface = interfaces.get('lan_interface', 'eth0')
     
     print(f"Erkannte Interfaces: WAN={wan_iface}, LAN={lan_iface}")
     
@@ -663,7 +730,7 @@ EOF
     echo "   - Verbinde Server/NAS mit LAN-Port des Gateways"
     echo "   - Geräte erhalten IPs im Bereich 192.168.100.50-200"
     echo "   - Gateway-IP: 192.168.100.1"
-    echo "   - Nach ~2 Minuten sollten Geräte sichtbar sein"
+    echo "   - TrueNAS sollte nach ~2 Minuten mit 192.168.100.x IP sichtbar sein"
 }
 echo ""
 echo "📋 Befehle:"
