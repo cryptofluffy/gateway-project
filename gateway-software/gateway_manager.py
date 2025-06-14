@@ -336,9 +336,10 @@ PersistentKeepalive = 25
         print("🌐 Netzwerk-Interfaces werden konfiguriert...")
         
         # Interface-Konfigurationen
+        # Port A: Heimnetz-Client (DHCP von FritzBox)
+        # Port B: Server-Gateway (eigener DHCP für abgeschirmtes Netz)
         interfaces = [
-            {'dev': 'eth0', 'ip': '192.168.1.254/24', 'desc': 'Heimnetzwerk (Port A)'},
-            {'dev': 'eth1', 'ip': '10.0.0.1/24', 'desc': 'Server-Netzwerk (Port B)'}
+            {'dev': 'eth1', 'ip': '10.0.0.1/24', 'desc': 'Server-Netzwerk (Port B - Gateway-Funktion)'}
         ]
         
         for iface in interfaces:
