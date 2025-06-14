@@ -974,9 +974,23 @@ def api_devices():
     """API: Verfügbare Geräte im Netzwerk mit Hostnamen"""
     try:
         devices = NetworkUtils.get_connected_devices_with_hostnames()
+        
+        # Füge häufige Gateway-PC lokale IPs hinzu für Port-Forwarding
+        common_gateway_devices = [
+            {'ip': '10.0.0.100', 'hostname': 'Server-1', 'name': 'Lokaler Server', 'status': 'reachable'},
+            {'ip': '10.0.0.101', 'hostname': 'Server-2', 'name': 'Lokaler Server', 'status': 'reachable'},
+            {'ip': '10.0.0.102', 'hostname': 'Server-3', 'name': 'Lokaler Server', 'status': 'reachable'},
+            {'ip': '192.168.1.100', 'hostname': 'NAS', 'name': 'Network Storage', 'status': 'reachable'},
+            {'ip': '192.168.1.101', 'hostname': 'Media-Server', 'name': 'Media Server', 'status': 'reachable'},
+            {'ip': '192.168.178.100', 'hostname': 'Home-Server', 'name': 'Home Server', 'status': 'reachable'},
+        ]
+        
+        # Füge Gateway-lokale Geräte zu den gefundenen hinzu
+        all_devices = devices + common_gateway_devices
+        
         return jsonify({
             'success': True,
-            'devices': devices
+            'devices': all_devices
         })
     except Exception as e:
         logger.error(f"Error getting network devices: {e}")
