@@ -524,6 +524,21 @@ INTERFACE_DETECT_EOF
         echo "❌ Interface-Konfiguration fehlgeschlagen - keine gültigen Interfaces ermittelt"
         exit 1
     fi
+
+    # KRITISCH: Prüfe SOFORT ob LAN-Interface sicher ist (VOR jeder Konfiguration)
+    if [[ $LAN_INTERFACE == wlan* ]]; then
+        echo ""
+        echo "❌ UPDATE ABGEBROCHEN - Unsichere Konfiguration erkannt"
+        echo "❌ WLAN-Interface ($LAN_INTERFACE) als LAN würde den Pi aufhängen!"
+        echo ""
+        echo "🔧 LÖSUNG:"
+        echo "1. Ethernet-Kabel an den Pi anschließen" 
+        echo "2. Im Dashboard Interface-Konfiguration ändern:"
+        echo "   - WAN-Interface: $LAN_INTERFACE (WLAN für Internet)"
+        echo "   - LAN-Interface: eth0 (Ethernet für Server)"
+        echo "3. Update erneut ausführen"
+        exit 1
+    fi
     
     # DHCP-Konfiguration mit erkanntem Interface erstellen
     echo "🔧 Konfiguriere DHCP-Server für Interface $LAN_INTERFACE..."
@@ -561,14 +576,6 @@ EOF
     else
         echo "⚠️ DHCP-Server Probleme:"
         systemctl status isc-dhcp-server --no-pager
-    fi
-    
-    # WLAN als LAN ist nicht erlaubt - würde Pi aufhängen
-    if [[ $LAN_INTERFACE == wlan* ]]; then
-        echo ""
-        echo "❌ UPDATE ABGEBROCHEN - Unsichere Konfiguration erkannt"
-        echo "❌ WLAN-Interface als LAN würde den Pi aufhängen!"
-        exit 1
     fi
     
     # Test network scanner functionality
