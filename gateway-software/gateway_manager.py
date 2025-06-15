@@ -196,6 +196,42 @@ class WireGuardGateway:
         
         return wan_iface, lan_iface
     
+    def update_network_config(self, network_config):
+        """Aktualisiert die Netzwerk-Interface-Konfiguration vom Dashboard"""
+        if not network_config:
+            print("⚠️ Keine Netzwerk-Konfiguration erhalten")
+            return False
+            
+        try:
+            print(f"🔄 Aktualisiere Interface-Konfiguration...")
+            print(f"   WAN: {network_config.get('wan_interface', 'auto')}")
+            print(f"   LAN: {network_config.get('lan_interface', 'auto')}")
+            
+            # Neue Konfiguration setzen
+            self.network_config = network_config
+            self.wan_interface = network_config.get('wan_interface', 'auto')
+            self.lan_interface = network_config.get('lan_interface', 'auto')
+            
+            # Konfigurationsdatei aktualisieren
+            if os.path.exists('/etc/wireguard-gateway/config.json'):
+                with open('/etc/wireguard-gateway/config.json', 'r') as f:
+                    config = json.load(f)
+                
+                config['network_config'] = self.network_config
+                
+                with open('/etc/wireguard-gateway/config.json', 'w') as f:
+                    json.dump(config, f, indent=2)
+                
+                print("✅ Netzwerk-Konfiguration aktualisiert und gespeichert")
+                return True
+            else:
+                print("❌ Gateway-Konfigurationsdatei nicht gefunden")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Fehler beim Aktualisieren der Netzwerk-Konfiguration: {e}")
+            return False
+    
     def update_vps_public_key(self):
         """Aktualisiere VPS Public Key automatisch"""
         # Prüfe ob API-URL konfiguriert ist

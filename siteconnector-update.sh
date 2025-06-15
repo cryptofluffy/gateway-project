@@ -426,7 +426,7 @@ except:
 
 print(f"🔍 Verfügbare Interfaces: {', '.join(available_interfaces)}")
 
-# Dashboard-Konfiguration laden
+# Dashboard-Konfiguration laden - ERST von VPS holen, dann lokal speichern
 dashboard_lan = None
 dashboard_wan = None
 config_error = None
@@ -435,7 +435,35 @@ try:
     from gateway_manager import WireGuardGateway
     gw = WireGuardGateway()
     
-    # get_actual_interfaces gibt (wan_iface, lan_iface) Tupel zurück
+    # 1. Versuche aktuelle Konfiguration vom VPS Dashboard zu holen
+    print("🔄 Synchronisiere Interface-Konfiguration mit VPS Dashboard...")
+    try:
+        if hasattr(gw, 'vps_api_url') and gw.vps_api_url:
+            # Hole aktuelle Gateway-Konfiguration vom VPS
+            import requests
+            response = requests.get(f"{gw.vps_api_url}/api/clients", timeout=10)
+            if response.status_code == 200:
+                clients = response.json().get('clients', [])
+                # Finde dieses Gateway anhand des Public Keys
+                gateway_config = None
+                if hasattr(gw, 'gateway_public_key'):
+                    for client in clients:
+                        if client.get('public_key') == gw.gateway_public_key:
+                            gateway_config = client.get('network_config')
+                            break
+                
+                if gateway_config:
+                    print("✅ Interface-Konfiguration vom VPS Dashboard erhalten")
+                    gw.update_network_config(gateway_config)
+                else:
+                    print("⚠️ Gateway nicht in VPS-Liste gefunden - verwende lokale Konfiguration")
+            else:
+                print("⚠️ VPS Dashboard nicht erreichbar - verwende lokale Konfiguration")
+    except Exception as e:
+        print(f"⚠️ Fehler beim Abrufen der VPS-Konfiguration: {e}")
+        print("⚠️ Verwende lokale Konfiguration")
+    
+    # 2. Lade aktuelle (möglicherweise aktualisierte) Konfiguration
     wan_iface, lan_iface = gw.get_actual_interfaces()
     dashboard_wan = wan_iface
     dashboard_lan = lan_iface
