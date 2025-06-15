@@ -175,24 +175,21 @@ class WireGuardGateway:
             return ['eth0']  # Fallback - nur ein Interface falls Detection fehlschlägt
     
     def get_actual_interfaces(self):
-        """Ermittle die tatsächlich zu verwendenden Interfaces"""
-        detected = self.detect_interfaces()
+        """Ermittle die tatsächlich zu verwendenden Interfaces - Dashboard hat Priorität"""
         
-        # WAN Interface bestimmen (WLAN für Internet)
-        if self.wan_interface == 'auto':
-            # WLAN ist normalerweise WAN (Internet-Verbindung)
-            wlan_interfaces = [iface for iface in detected if iface.startswith(('wlan', 'wl'))]
-            wan_iface = wlan_interfaces[0] if wlan_interfaces else detected[0] if detected else 'wlan0'
-        else:
-            wan_iface = self.wan_interface
+        # Dashboard-Konfiguration hat IMMER Priorität
+        wan_iface = self.wan_interface
+        lan_iface = self.lan_interface
         
-        # LAN Interface bestimmen (Ethernet für Server)
-        if self.lan_interface == 'auto':
-            # Ethernet ist normalerweise LAN (Server-Netzwerk)
-            eth_interfaces = [iface for iface in detected if iface.startswith(('eth', 'en'))]
-            lan_iface = eth_interfaces[0] if eth_interfaces else detected[1] if len(detected) > 1 else 'eth0'
-        else:
-            lan_iface = self.lan_interface
+        # Nur Auto-Detection wenn Dashboard nicht konfiguriert
+        if wan_iface == 'auto' or lan_iface == 'auto':
+            detected = self.detect_interfaces()
+            
+            if wan_iface == 'auto':
+                wan_iface = detected[0] if detected else 'eth0'
+                
+            if lan_iface == 'auto':
+                lan_iface = detected[1] if len(detected) > 1 else 'eth1'
         
         print(f"📡 WAN Interface (Internet): {wan_iface}")
         print(f"🖧 LAN Interface (Server): {lan_iface}")
