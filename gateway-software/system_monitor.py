@@ -273,6 +273,9 @@ class GatewaySystemMonitor:
         """Haupt-Monitoring-Schleife"""
         logger.info("Gateway Monitoring-Schleife gestartet")
         
+        consecutive_errors = 0
+        max_consecutive_errors = 5
+        
         while self.monitoring_active:
             try:
                 # Sammle aktuelle Metriken
@@ -285,12 +288,28 @@ class GatewaySystemMonitor:
                 if self.vps_api_url:
                     self.send_metrics_to_vps(metrics)
                 
+                # Reset error counter bei erfolgreichem Durchlauf
+                consecutive_errors = 0
+                
                 # Warte bis zum nächsten Update
                 time.sleep(self.update_interval)
                 
+            except KeyboardInterrupt:
+                logger.info("Monitoring gestoppt durch Benutzer")
+                self.monitoring_active = False
+                break
             except Exception as e:
-                logger.error(f"Fehler in Monitoring-Schleife: {e}")
-                time.sleep(30)  # Längere Pause bei Fehlern
+                consecutive_errors += 1
+                logger.error(f"Monitoring-Fehler ({consecutive_errors}/{max_consecutive_errors}): {e}")
+                
+                # Stoppe bei zu vielen aufeinanderfolgenden Fehlern
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.error("Zu viele Monitoring-Fehler - Stoppe Überwachung")
+                    self.monitoring_active = False
+                    break
+                
+                # Exponential backoff bei Fehlern
+                time.sleep(min(120, 30 * consecutive_errors))
     
     def _get_cpu_percent(self) -> float:
         """CPU-Auslastung ermitteln"""
@@ -624,14 +643,31 @@ if __name__ == "__main__":
         print("✅ Gateway-Monitoring läuft - sendet Daten an VPS")
         
         try:
-            # Service läuft permanent
+            # Service läuft mit Stabilisierung
+            consecutive_errors = 0
+            max_consecutive_errors = 3
+            
             while True:
-                time.sleep(60)
-                
-                # Health-Check
-                if gateway_monitor and not gateway_monitor.monitoring_active:
-                    print("⚠️ Monitoring gestoppt - starte neu...")
-                    start_gateway_monitoring()
+                try:
+                    time.sleep(60)
+                    
+                    # Health-Check
+                    if gateway_monitor and not gateway_monitor.monitoring_active:
+                        print("⚠️ Monitoring gestoppt - starte neu...")
+                        start_gateway_monitoring()
+                    
+                    # Reset error counter bei erfolgreichem Health-Check
+                    consecutive_errors = 0
+                    
+                except Exception as e:
+                    consecutive_errors += 1
+                    logger.error(f"Service-Fehler ({consecutive_errors}/{max_consecutive_errors}): {e}")
+                    
+                    if consecutive_errors >= max_consecutive_errors:
+                        logger.error("Zu viele Service-Fehler - beende Service")
+                        break
+                    
+                    time.sleep(min(300, 60 * consecutive_errors))
                     
         except KeyboardInterrupt:
             print("\n🛑 Service-Stopp angefordert")

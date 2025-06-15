@@ -211,9 +211,14 @@ class ApplicationConfig:
         if self.MAX_PORT_FORWARDS <= 0:
             raise ValueError(f"MAX_PORT_FORWARDS muss positiv sein: {self.MAX_PORT_FORWARDS}")
         
-        # Host-Validierung
+        # Host-Validierung - KRITISCHES SICHERHEITSRISIKO BEHEBEN
         if self.HOST == '0.0.0.0' and self.ENV == 'production':
-            logger.warning("Server bindet an alle Interfaces (0.0.0.0) in Produktion - Sicherheitsrisiko!")
+            logger.error("SICHERHEITSFEHLER: Server kann nicht an 0.0.0.0 in Produktion binden!")
+            # Automatische Korrektur: Binde an localhost für Sicherheit
+            self.HOST = '127.0.0.1'
+            logger.warning("Host automatisch auf 127.0.0.1 korrigiert - für externe Zugriffe VPN verwenden")
+        elif self.HOST == '0.0.0.0':
+            logger.warning("Server bindet an alle Interfaces (0.0.0.0) - nur für Entwicklung geeignet!")
 
 @dataclass
 class Config:

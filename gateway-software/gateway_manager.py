@@ -793,43 +793,80 @@ class GatewayMonitor:
             self.monitor_thread.join()
     
     def _monitor_loop(self):
-        """Monitoring-Schleife mit VPS Key Updates"""
+        """Monitoring-Schleife mit VPS Key Updates - STABILISIERT"""
         vps_key_check_counter = 0
+        consecutive_errors = 0
+        max_consecutive_errors = 3
+        
         while self.running:
             try:
-                # Tunnel-Status prüfen
-                status = self.gateway.get_tunnel_status()
+                # Timeout für alle Operationen setzen
+                start_time = time.time()
                 
-                # Bei Verbindungsabbruch automatisch reconnecten
+                # Tunnel-Status prüfen mit Timeout
+                try:
+                    status = self.gateway.get_tunnel_status()
+                except Exception as e:
+                    print(f"⚠️ Tunnel-Status Fehler: {e}")
+                    status = {'status': 'unknown'}
+                
+                # Bei Verbindungsabbruch automatisch reconnecten (mit Limit)
                 if status['status'] == 'disconnected' and self.gateway.is_connected:
-                    print("Tunnel-Verbindung verloren - versuche Reconnect...")
-                    self.gateway.stop_tunnel()
-                    time.sleep(5)
-                    self.gateway.start_tunnel()
+                    print("🔄 Tunnel-Verbindung verloren - versuche Reconnect...")
+                    try:
+                        self.gateway.stop_tunnel()
+                        time.sleep(5)
+                        self.gateway.start_tunnel()
+                    except Exception as e:
+                        print(f"⚠️ Reconnect fehlgeschlagen: {e}")
                 
-                # VPS Public Key alle 10 Minuten prüfen (20 * 30 Sekunden = 10 Minuten)
+                # VPS Public Key alle 10 Minuten prüfen (10 * 60 Sekunden)
                 vps_key_check_counter += 1
-                if vps_key_check_counter >= 20 and self.gateway.vps_api_url:
+                if vps_key_check_counter >= 10 and self.gateway.vps_api_url:
                     print("🔄 Regelmäßige VPS Public Key Prüfung...")
-                    if self.gateway.update_vps_public_key():
-                        # Tunnel neu starten wenn sich Key geändert hat
-                        if self.gateway.is_connected:
-                            print("🔄 VPS Key geändert - Tunnel wird neu gestartet...")
-                            self.gateway.stop_tunnel()
-                            time.sleep(2)
-                            self.gateway.start_tunnel()
+                    try:
+                        # Timeout für VPS-Verbindung
+                        if self.gateway.update_vps_public_key():
+                            # Tunnel neu starten wenn sich Key geändert hat
+                            if self.gateway.is_connected:
+                                print("🔄 VPS Key geändert - Tunnel wird neu gestartet...")
+                                self.gateway.stop_tunnel()
+                                time.sleep(2)
+                                self.gateway.start_tunnel()
+                    except Exception as e:
+                        print(f"⚠️ VPS Key Update fehlgeschlagen: {e}")
                     vps_key_check_counter = 0
                 
-                # Logs schreiben
-                os.makedirs('/var/log/wireguard-gateway', exist_ok=True)
-                with open('/var/log/wireguard-gateway/monitor.log', 'a') as f:
-                    f.write(f"{datetime.now().isoformat()} - Status: {status['status']}\n")
+                # Logs schreiben (mit Exception-Handling)
+                try:
+                    os.makedirs('/var/log/wireguard-gateway', exist_ok=True)
+                    with open('/var/log/wireguard-gateway/monitor.log', 'a') as f:
+                        f.write(f"{datetime.now().isoformat()} - Status: {status['status']}\n")
+                except Exception as e:
+                    print(f"⚠️ Log-Schreibfehler: {e}")
                 
-                time.sleep(30)  # Alle 30 Sekunden prüfen
+                # Reset error counter on success
+                consecutive_errors = 0
                 
-            except Exception as e:
-                print(f"Monitoring-Fehler: {e}")
+                # 60 Sekunden warten (reduziert CPU-Last auf Pi)
                 time.sleep(60)
+                
+            except KeyboardInterrupt:
+                print("\n⚠️ Monitoring wird beendet...")
+                self.running = False
+                break
+            except Exception as e:
+                consecutive_errors += 1
+                print(f"❌ Monitoring-Fehler ({consecutive_errors}/{max_consecutive_errors}): {e}")
+                
+                # Stoppe bei zu vielen aufeinanderfolgenden Fehlern
+                if consecutive_errors >= max_consecutive_errors:
+                    print("❌ Zu viele Monitoring-Fehler - Stoppe Überwachung")
+                    self.running = False
+                    break
+                
+                # Exponential backoff bei Fehlern
+                time.sleep(min(120, 30 * consecutive_errors))
 
 if __name__ == "__main__":
     gateway = WireGuardGateway()

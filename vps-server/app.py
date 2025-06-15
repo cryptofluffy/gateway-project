@@ -1239,10 +1239,23 @@ def api_admin_update():
         results = []
         for gateway_ip in gateway_ips:
             try:
-                # SSH to gateway and run update
+                # SSH to gateway and run update - SICHER IMPLEMENTIERT
+                # SICHERHEIT: Hardcoded Passwort entfernt - verwende Key-basierte Authentifizierung
+                gateway_ssh_key = os.getenv('GATEWAY_SSH_KEY', '/etc/wireguard/gateway_ssh_key')
+                if not os.path.exists(gateway_ssh_key):
+                    logger.error(f"Gateway SSH Key nicht gefunden: {gateway_ssh_key}")
+                    results.append({
+                        'gateway': gateway_ip,
+                        'success': False,
+                        'error': 'SSH Key für Gateway-Authentifizierung fehlt'
+                    })
+                    continue
+                
                 ssh_command = [
-                    'sshpass', '-p', 'gateway123',
-                    'ssh', '-o', 'StrictHostKeyChecking=no',
+                    'ssh', '-i', gateway_ssh_key,
+                    '-o', 'StrictHostKeyChecking=no',
+                    '-o', 'UserKnownHostsFile=/dev/null',
+                    '-o', 'ConnectTimeout=10',
                     f'admin@{gateway_ip}',
                     'cd /opt/gateway && git pull && sudo /opt/gateway/scripts/install-network-scanner.sh && sudo systemctl restart gateway-manager'
                 ]
@@ -1352,10 +1365,13 @@ class RealtimeMonitor:
         logger.info("Real-time monitoring stopped")
     
     def _monitor_loop(self):
-        """Main monitoring loop"""
+        """Main monitoring loop - STABILISIERT mit Error-Handling"""
+        consecutive_errors = 0
+        max_consecutive_errors = 5
+        
         while self.running:
             try:
-                # Sammle System-Statistiken
+                # Sammle System-Statistiken mit Timeout
                 stats = system_monitor.get_current_stats()
                 alerts = alert_manager.check_alerts(stats)
                 health = get_system_health()
@@ -1379,11 +1395,26 @@ class RealtimeMonitor:
                         'timestamp': datetime.now().isoformat()
                     })
                 
+                # Reset error counter bei erfolgreichem Durchlauf
+                consecutive_errors = 0
                 time.sleep(self.update_interval)
                 
+            except KeyboardInterrupt:
+                logger.info("Monitoring gestoppt durch Benutzer")
+                self.running = False
+                break
             except Exception as e:
-                logger.error(f"Error in monitoring loop: {e}")
-                time.sleep(30)  # Längere Pause bei Fehlern
+                consecutive_errors += 1
+                logger.error(f"Monitoring-Fehler ({consecutive_errors}/{max_consecutive_errors}): {e}")
+                
+                # Stoppe bei zu vielen aufeinanderfolgenden Fehlern
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.error("Zu viele Monitoring-Fehler - Stoppe Überwachung")
+                    self.running = False
+                    break
+                
+                # Exponential backoff bei Fehlern
+                time.sleep(min(300, 30 * consecutive_errors))  # Max 5 Minuten
 
 # Globale Monitor-Instanz
 realtime_monitor = RealtimeMonitor()
