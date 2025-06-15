@@ -477,15 +477,26 @@ else:
         
     # Interface für Gateway-Netzwerk konfigurieren
     try:
-        # Warnung bei WLAN als LAN-Interface
+        # KRITISCH: WLAN-Interface NICHT rekonfigurieren wenn es die einzige Verbindung ist
         if dashboard_lan.startswith(('wlan', 'wl')):
-            print(f"⚠️ WARNUNG: {dashboard_lan} ist ein WLAN-Interface - SSH-Verbindung könnte unterbrochen werden")
-            print("⚠️ Interface-Konfiguration wird im Hintergrund fortgesetzt...")
-            
-        subprocess.run(['ip', 'addr', 'flush', 'dev', dashboard_lan], capture_output=True)
-        subprocess.run(['ip', 'addr', 'add', '192.168.100.1/24', 'dev', dashboard_lan], capture_output=True)
-        subprocess.run(['ip', 'link', 'set', dashboard_lan, 'up'], capture_output=True)
-        print(f"✅ Interface {dashboard_lan} konfiguriert: 192.168.100.1/24")
+            print(f"❌ FEHLER: {dashboard_lan} ist ein WLAN-Interface und kann nicht als LAN verwendet werden!")
+            print(f"❌ Das würde den Pi komplett vom Netzwerk trennen!")
+            print("")
+            print("🔧 LÖSUNG:")
+            print("1. Ethernet-Kabel an den Pi anschließen")
+            print("2. Im Dashboard Interface-Konfiguration ändern:")
+            print(f"   - WAN-Interface: {dashboard_lan} (WLAN für Internet)")
+            print("   - LAN-Interface: eth0 (Ethernet für Server)")
+            print("3. Update erneut ausführen")
+            print("")
+            config_error = f"WLAN-Interface {dashboard_lan} kann nicht als LAN verwendet werden"
+            with open('/tmp/gateway_config_error.txt', 'w') as f:
+                f.write(config_error)
+        else:
+            subprocess.run(['ip', 'addr', 'flush', 'dev', dashboard_lan], capture_output=True)
+            subprocess.run(['ip', 'addr', 'add', '192.168.100.1/24', 'dev', dashboard_lan], capture_output=True)
+            subprocess.run(['ip', 'link', 'set', dashboard_lan, 'up'], capture_output=True)
+            print(f"✅ Interface {dashboard_lan} konfiguriert: 192.168.100.1/24")
     except Exception as e:
         print(f"❌ Interface-Konfiguration Fehler: {e}")
         with open('/tmp/gateway_config_error.txt', 'w') as f:
@@ -552,21 +563,12 @@ EOF
         systemctl status isc-dhcp-server --no-pager
     fi
     
-    # Bei WLAN als LAN-Interface: Script schnell beenden um SSH-Timeout zu vermeiden
+    # WLAN als LAN ist nicht erlaubt - würde Pi aufhängen
     if [[ $LAN_INTERFACE == wlan* ]]; then
         echo ""
-        echo "⚠️ WARNUNG: WLAN als LAN konfiguriert - SSH-Verbindung wird unterbrochen"
-        echo "✅ Update-Prozess läuft im Hintergrund weiter"
-        echo "🔌 Verbinde Server per Ethernet mit dem Gateway"
-        echo "📡 Gateway ist erreichbar unter: 192.168.100.1"
-        echo ""
-        # Schneller Exit um SSH-Timeout zu vermeiden
-        nohup bash -c "
-            sleep 5
-            systemctl restart network-scanner.timer 2>/dev/null || true
-            echo '✅ Gateway Update abgeschlossen' >> /var/log/siteconnector-update.log
-        " >/dev/null 2>&1 &
-        exit 0
+        echo "❌ UPDATE ABGEBROCHEN - Unsichere Konfiguration erkannt"
+        echo "❌ WLAN-Interface als LAN würde den Pi aufhängen!"
+        exit 1
     fi
     
     # Test network scanner functionality
