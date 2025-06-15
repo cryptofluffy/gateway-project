@@ -178,17 +178,19 @@ class WireGuardGateway:
         """Ermittle die tatsächlich zu verwendenden Interfaces"""
         detected = self.detect_interfaces()
         
-        # WAN Interface bestimmen
+        # WAN Interface bestimmen (WLAN für Internet)
         if self.wan_interface == 'auto':
-            # Erstes Interface ist normalerweise WAN (Internet-Verbindung)
-            wan_iface = detected[0] if detected else 'eth0'
+            # WLAN ist normalerweise WAN (Internet-Verbindung)
+            wlan_interfaces = [iface for iface in detected if iface.startswith(('wlan', 'wl'))]
+            wan_iface = wlan_interfaces[0] if wlan_interfaces else detected[0] if detected else 'wlan0'
         else:
             wan_iface = self.wan_interface
         
-        # LAN Interface bestimmen 
+        # LAN Interface bestimmen (Ethernet für Server)
         if self.lan_interface == 'auto':
-            # Zweites Interface ist normalerweise LAN (Server-Netzwerk)
-            lan_iface = detected[1] if len(detected) > 1 else 'eth0'
+            # Ethernet ist normalerweise LAN (Server-Netzwerk)
+            eth_interfaces = [iface for iface in detected if iface.startswith(('eth', 'en'))]
+            lan_iface = eth_interfaces[0] if eth_interfaces else detected[1] if len(detected) > 1 else 'eth0'
         else:
             lan_iface = self.lan_interface
         
