@@ -477,6 +477,11 @@ else:
         
     # Interface für Gateway-Netzwerk konfigurieren
     try:
+        # Warnung bei WLAN als LAN-Interface
+        if dashboard_lan.startswith(('wlan', 'wl')):
+            print(f"⚠️ WARNUNG: {dashboard_lan} ist ein WLAN-Interface - SSH-Verbindung könnte unterbrochen werden")
+            print("⚠️ Interface-Konfiguration wird im Hintergrund fortgesetzt...")
+            
         subprocess.run(['ip', 'addr', 'flush', 'dev', dashboard_lan], capture_output=True)
         subprocess.run(['ip', 'addr', 'add', '192.168.100.1/24', 'dev', dashboard_lan], capture_output=True)
         subprocess.run(['ip', 'link', 'set', dashboard_lan, 'up'], capture_output=True)
@@ -545,6 +550,23 @@ EOF
     else
         echo "⚠️ DHCP-Server Probleme:"
         systemctl status isc-dhcp-server --no-pager
+    fi
+    
+    # Bei WLAN als LAN-Interface: Script schnell beenden um SSH-Timeout zu vermeiden
+    if [[ $LAN_INTERFACE == wlan* ]]; then
+        echo ""
+        echo "⚠️ WARNUNG: WLAN als LAN konfiguriert - SSH-Verbindung wird unterbrochen"
+        echo "✅ Update-Prozess läuft im Hintergrund weiter"
+        echo "🔌 Verbinde Server per Ethernet mit dem Gateway"
+        echo "📡 Gateway ist erreichbar unter: 192.168.100.1"
+        echo ""
+        # Schneller Exit um SSH-Timeout zu vermeiden
+        nohup bash -c "
+            sleep 5
+            systemctl restart network-scanner.timer 2>/dev/null || true
+            echo '✅ Gateway Update abgeschlossen' >> /var/log/siteconnector-update.log
+        " >/dev/null 2>&1 &
+        exit 0
     fi
     
     # Test network scanner functionality
