@@ -415,10 +415,11 @@ try:
             parts = line.split(':')
             if len(parts) >= 2:
                 iface = parts[1].strip().split('@')[0]
-                # Nur echte Ethernet-Interfaces (eth, enp, ens, end) und keine virtuellen
-                if (iface.startswith(('eth', 'enp', 'ens', 'end')) and 
-                    'docker' not in iface and 'br-' not in iface and 'lo' not in iface and 
-                    'veth' not in iface and 'wg' not in iface):
+                # Alle physischen Interfaces (Ethernet, WLAN, USB, etc.) - keine virtuellen
+                if (iface not in ['lo'] and 
+                    'docker' not in iface and 'br-' not in iface and 
+                    'veth' not in iface and 'wg' not in iface and
+                    'tap' not in iface and 'tun' not in iface):
                     available_interfaces.append(iface)
 except:
     pass
@@ -456,13 +457,15 @@ if config_error:
     print("🔧 LÖSUNG:")
     print("1. Öffne das Dashboard im Browser")
     print("2. Gehe zu Gateway-Einstellungen")
-    print("3. Konfiguriere die Netzwerk-Interfaces:")
-    print("   - WAN-Interface: Interface für Internet-Verbindung")
-    print("   - LAN-Interface: Interface für Server-Netzwerk")
-    print("4. Speichere die Einstellungen")
-    print("5. Führe 'sudo siteconnector-update' erneut aus")
+    print("3. Wähle aus den verfügbaren Interfaces:")
+    print(f"   📡 Verfügbare Interfaces: {', '.join(available_interfaces)}")
+    print("4. Konfiguriere beliebige Interface-Kombination:")
+    print("   - WAN-Interface: Für Internet-Verbindung")
+    print("   - LAN-Interface: Für DHCP/Server-Netzwerk")
+    print("5. Speichere die Einstellungen")
+    print("6. Führe 'sudo siteconnector-update' erneut aus")
     print("")
-    print(f"📡 Verfügbare Interfaces: {', '.join(available_interfaces)}")
+    print("💡 Unterstützt: Ethernet, WLAN, USB-Adapter, Fiber, etc.")
     
     # Fehler-Flag setzen
     with open('/tmp/gateway_config_error.txt', 'w') as f:
@@ -475,28 +478,13 @@ else:
         f.write(f"WAN_INTERFACE={dashboard_wan}\n")
         f.write(f"LAN_INTERFACE={dashboard_lan}\n")
         
-    # Interface für Gateway-Netzwerk konfigurieren
+    # Interface für Gateway-Netzwerk konfigurieren - Dashboard-Auswahl wird übernommen
     try:
-        # KRITISCH: WLAN-Interface NICHT rekonfigurieren wenn es die einzige Verbindung ist
-        if dashboard_lan.startswith(('wlan', 'wl')):
-            print(f"❌ FEHLER: {dashboard_lan} ist ein WLAN-Interface und kann nicht als LAN verwendet werden!")
-            print(f"❌ Das würde den Pi komplett vom Netzwerk trennen!")
-            print("")
-            print("🔧 LÖSUNG:")
-            print("1. Ethernet-Kabel an den Pi anschließen")
-            print("2. Im Dashboard Interface-Konfiguration ändern:")
-            print(f"   - WAN-Interface: {dashboard_lan} (WLAN für Internet)")
-            print("   - LAN-Interface: eth0 (Ethernet für Server)")
-            print("3. Update erneut ausführen")
-            print("")
-            config_error = f"WLAN-Interface {dashboard_lan} kann nicht als LAN verwendet werden"
-            with open('/tmp/gateway_config_error.txt', 'w') as f:
-                f.write(config_error)
-        else:
-            subprocess.run(['ip', 'addr', 'flush', 'dev', dashboard_lan], capture_output=True)
-            subprocess.run(['ip', 'addr', 'add', '192.168.100.1/24', 'dev', dashboard_lan], capture_output=True)
-            subprocess.run(['ip', 'link', 'set', dashboard_lan, 'up'], capture_output=True)
-            print(f"✅ Interface {dashboard_lan} konfiguriert: 192.168.100.1/24")
+        print(f"🔧 Konfiguriere LAN-Interface: {dashboard_lan}")
+        subprocess.run(['ip', 'addr', 'flush', 'dev', dashboard_lan], capture_output=True)
+        subprocess.run(['ip', 'addr', 'add', '192.168.100.1/24', 'dev', dashboard_lan], capture_output=True)
+        subprocess.run(['ip', 'link', 'set', dashboard_lan, 'up'], capture_output=True)
+        print(f"✅ Interface {dashboard_lan} konfiguriert: 192.168.100.1/24")
     except Exception as e:
         print(f"❌ Interface-Konfiguration Fehler: {e}")
         with open('/tmp/gateway_config_error.txt', 'w') as f:
@@ -525,20 +513,11 @@ INTERFACE_DETECT_EOF
         exit 1
     fi
 
-    # KRITISCH: Prüfe SOFORT ob LAN-Interface sicher ist (VOR jeder Konfiguration)
-    if [[ $LAN_INTERFACE == wlan* ]]; then
-        echo ""
-        echo "❌ UPDATE ABGEBROCHEN - Unsichere Konfiguration erkannt"
-        echo "❌ WLAN-Interface ($LAN_INTERFACE) als LAN würde den Pi aufhängen!"
-        echo ""
-        echo "🔧 LÖSUNG:"
-        echo "1. Ethernet-Kabel an den Pi anschließen" 
-        echo "2. Im Dashboard Interface-Konfiguration ändern:"
-        echo "   - WAN-Interface: $LAN_INTERFACE (WLAN für Internet)"
-        echo "   - LAN-Interface: eth0 (Ethernet für Server)"
-        echo "3. Update erneut ausführen"
-        exit 1
-    fi
+    # Universelle Konfiguration - Dashboard-Auswahl wird immer übernommen
+    echo "🎯 Universelle Interface-Konfiguration:"
+    echo "   WAN-Interface: $WAN_INTERFACE (für Internet-Verbindung)"
+    echo "   LAN-Interface: $LAN_INTERFACE (für DHCP/Server-Netzwerk)"
+    echo ""
     
     # DHCP-Konfiguration mit erkanntem Interface erstellen
     echo "🔧 Konfiguriere DHCP-Server für Interface $LAN_INTERFACE..."
