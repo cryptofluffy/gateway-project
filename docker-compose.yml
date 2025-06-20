@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gateway-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/var/log/nginx
+    networks:
+      - gateway-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: gateway-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+      - ./logs:/var/log/nginx
+    depends_on:
+      - dashboard
+    networks:
+      - gateway-network
+
+networks:
+  gateway-network:
+    driver: bridge
